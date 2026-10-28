@@ -1,0 +1,20 @@
+# Core (needed everywhere)
+Pillow>=10.0
+
+# Windows clipboard (read is via Pillow; write needs pywin32)
+pywin32>=306 ; sys_platform == "win32"
+
+# OCR. RapidOCR (ONNX, CPU) is the DEFAULT — reliable across Python versions and
+# bundles cleanly into the .exe (ship the models). winocr (built-in Windows
+# engine) is lighter but depends on winrt, which can fail to load on some
+# Python/Windows combos — kept as an optional faster path, auto-falls-back to
+# RapidOCR. pytesseract needs the Tesseract binary installed separately.
+rapidocr-onnxruntime>=1.3        # default neural OCR (CPU, ~15MB models)
+winocr>=0.0.13 ; sys_platform == "win32"   # optional faster path (may need winrt)
+# pytesseract>=0.3.10            # optional; also install the Tesseract .exe
+
+# Tray app
+pystray>=0.19
+
+# Tests
+pytest>=8.0
