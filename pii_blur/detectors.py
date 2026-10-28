@@ -171,26 +171,46 @@ def detect_names(words: list[Word], gazetteer: set | None = None) -> list[Redact
     fused = [bool(patterns.PATRONYMIC_FUSED.fullmatch(t)) for t in tokens]
     surname = [bool(patterns.SURNAME_SUFFIX.fullmatch(t)) for t in tokens]
 
-    def _anchor(i: int) -> bool:
+    def _usable(i: int) -> bool:
         t = tokens[i]
-        if not t or _is_avatar_initials(t) or t.lower() in patterns.NAME_STOPWORDS:
-            return False
-        return bool(particle[i] or fused[i] or surname[i]
-                    or (t[:1].isupper() and t.lower() in gaz))
+        return bool(t) and not _is_avatar_initials(t) and t.lower() not in patterns.NAME_STOPWORDS
+
+    def _cap(i: int) -> bool:
+        return bool(tokens[i]) and tokens[i][:1].isupper()
 
     def _plausible(i: int) -> bool:
         """A capitalized alphabetic token that could be a given name (not a label)."""
         t = tokens[i]
-        return (len(t) >= 2 and t[:1].isupper() and t.isalpha()
-                and not _is_avatar_initials(t) and t.lower() not in patterns.NAME_STOPWORDS)
+        return len(t) >= 2 and _cap(i) and t.isalpha() and _usable(i)
 
-    cand = [_anchor(i) for i in range(n)]
+    # Base anchors — a strong, context-free name signal. A surname suffix counts
+    # ONLY when the word is Capitalized: Cyrillic "-ов/-ев/-ин" (and Latin "-ov")
+    # are also everyday word endings (genitive plural: "контактов", "один раз"…),
+    # which appear lowercase in running text — so a lowercase suffix word is NOT a
+    # surname by itself.
+    anchor = [False] * n
+    for i in range(n):
+        if not _usable(i):
+            continue
+        if particle[i] or fused[i] or (surname[i] and _cap(i)) or (_cap(i) and tokens[i].lower() in gaz):
+            anchor[i] = True
+
+    # Rescue a LOWERCASE surname only when a capitalized name word sits right next
+    # to it ("Аброр абламидов", "Akram mo'monov") — a surname shown lowercase in a
+    # CRM card. "импорт контактов" has no such neighbour, so it stays unflagged.
+    for i in range(n):
+        if anchor[i] or not (surname[i] and _usable(i)) or _cap(i):
+            continue
+        if any(_plausible(j) and _name_adjacent(words[i].box, words[j].box) for j in range(n)):
+            anchor[i] = True
+
+    cand = anchor[:]
     # A plain capitalized word becomes a candidate only when it touches an anchor.
     for i in range(n):
         if cand[i] or not _plausible(i):
             continue
         for j in range(n):
-            if _anchor(j) and _name_adjacent(words[i].box, words[j].box):
+            if anchor[j] and _name_adjacent(words[i].box, words[j].box):
                 cand[i] = True
                 break
 
@@ -221,7 +241,16 @@ def detect_names(words: list[Word], gazetteer: set | None = None) -> list[Redact
         if not (has_particle or has_fused or has_surname or len(members) >= 2):
             continue
         members.sort()
-        conf = 0.78 if (has_particle or has_fused) else (0.60 if has_surname else 0.55)
+        # A full name (given + surname, or with a patronymic) is confident; a LONE
+        # surname word on its own gets 0.50 so the default min_confidence (0.60)
+        # drops it — this is what keeps a stray capitalized "-ов" word ("Готов",
+        # "Контактов" at a sentence start) from being blurred.
+        if has_particle or has_fused:
+            conf = 0.78
+        elif has_surname:
+            conf = 0.70 if len(members) >= 2 else 0.50
+        else:
+            conf = 0.55
         out.append(Redaction(
             _union_box([words[k].box for k in members]),
             "name", conf, " ".join(words[k].text for k in members),
