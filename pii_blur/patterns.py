@@ -247,11 +247,13 @@ AMBIGUOUS_GIVEN_NAMES = {
     # a real Uzbek dictionary (uz-hunspell, github.com/uzbek-net/uz-hunspell) —
     # 2115 overlaps total, but MOST are genuine rare names that a spellcheck
     # dictionary also lists (expected, not a problem). This subset is different:
-    # numbers, days of the week, and extremely common adjectives/nouns that
-    # appear constantly in ordinary text/forms — a far higher false-positive
-    # risk than an archaic name that's merely also dictionary-listed.
-    "bir", "besh", "olti", "yetti", "sakkiz", "toqqiz", "sakson", "yetmish",
-    "chor", "qirq",
+    # days of the week and extremely common adjectives/nouns that appear
+    # constantly in ordinary text/forms — a far higher false-positive risk than
+    # an archaic name that's merely also dictionary-listed. Pure number-words
+    # (besh=5, yetti=7…) were REMOVED from the gazetteer outright instead of
+    # listed here — unlike a day name (genuinely used in naming tradition,
+    # "born on Friday"), nobody is actually named "Five" or "Seventy", so
+    # there's no real recall to protect by keeping them rescuable.
     "juma", "shanba", "payshanba", "seshanba", "dushanba",
     "yaxshi", "yomon", "yaqin", "uzoq", "uzun", "katta", "kichik", "yana",
     "hozir", "darrov", "baland",
