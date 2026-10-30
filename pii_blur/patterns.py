@@ -230,6 +230,21 @@ def _load_uz_names() -> set:
 # the imported list) drives exact given-name matching.
 COMMON_GIVEN_NAMES_ALL = COMMON_GIVEN_NAMES | _load_uz_names()
 
+# Words that are GENUINELY BOTH a real given name AND an everyday common noun —
+# e.g. "Mamlakat" is a real Uzbek name but also the ordinary word for "country"
+# (found via a real false positive: "Mamlakat — O'zbekiston tanlandi" = "Country —
+# Uzbekistan selected" in an ordinary form, not a person). Simply deleting these
+# from the gazetteer would lose real recall for people who actually have that
+# name — instead, a word here is NOT allowed to anchor a name cluster on its own
+# (so bare "Mamlakat" in a form label stays unflagged), but still joins a cluster
+# normally when it sits next to a REAL anchor (a surname, patronymic, or another
+# unambiguous given name) — so "Mamlakat Yusupova" (an actual full name) is still
+# caught. The common-noun sense is far more frequent than the name sense in the
+# UI/form text PiiBlur actually sees, so this is the safer default.
+AMBIGUOUS_GIVEN_NAMES = {
+    "mamlakat", "viloyat", "manzil", "maktub", "miqdor", "rahbar",
+}
+
 
 def ocr_canon(s: str) -> str:
     """Fold the characters OCR most often confuses so a garbled name still matches
@@ -250,3 +265,10 @@ def ocr_canon(s: str) -> str:
 
 # Canonical forms of every gazetteer name, for the OCR-tolerant fallback match.
 CANON_GIVEN_NAMES = {ocr_canon(n) for n in COMMON_GIVEN_NAMES_ALL}
+
+# Canonical (OCR-confusable-folded) forms of the ambiguous set — so an OCR-garbled
+# duplicate of an ambiguous word (e.g. dual-language OCR reading "Mamlakat" twice
+# and mangling one copy to "Mam1akat") is still recognized as ambiguous and can't
+# anchor on its own either, closing the same loophole the fold-match would
+# otherwise reopen.
+AMBIGUOUS_CANON = {ocr_canon(w) for w in AMBIGUOUS_GIVEN_NAMES}

@@ -198,6 +198,16 @@ def detect_names(words: list[Word], gazetteer: set | None = None) -> list[Redact
                 return True
         return False
 
+    def _gaz_exact_hit(t_lower: str) -> bool:
+        """Exact gazetteer given-name match — EXCEPT words that are genuinely
+        ambiguous (also an everyday common noun, e.g. "Mamlakat" = a real name
+        but also "country"). Those can't anchor a cluster on their own (that's
+        what caused a real false positive on "Mamlakat — O'zbekiston tanlandi",
+        an ordinary form label); they still join a cluster via the normal
+        plausible-word-next-to-an-anchor path, so a real "Mamlakat Yusupova"
+        full name is still caught."""
+        return t_lower in gaz and t_lower not in patterns.AMBIGUOUS_GIVEN_NAMES
+
     # Base anchors — a strong, context-free name signal. A surname suffix counts
     # ONLY when the word is Capitalized: Cyrillic "-ов/-ев/-ин" (and Latin "-ov")
     # are also everyday word endings (genitive plural: "контактов", "один раз"…),
@@ -207,18 +217,27 @@ def detect_names(words: list[Word], gazetteer: set | None = None) -> list[Redact
     for i in range(n):
         if not _usable(i):
             continue
+        is_ambiguous = (tokens[i].lower() in patterns.AMBIGUOUS_GIVEN_NAMES
+                        or patterns.ocr_canon(tokens[i]) in patterns.AMBIGUOUS_CANON)
         if (particle[i] or fused[i] or (surname[i] and _cap(i))
-                or (_cap(i) and (tokens[i].lower() in gaz or _gaz_compound_hit(tokens[i].lower())
-                                 or patterns.ocr_canon(tokens[i]) in patterns.CANON_GIVEN_NAMES))):
+                or (_cap(i) and not is_ambiguous
+                    and (_gaz_exact_hit(tokens[i].lower()) or _gaz_compound_hit(tokens[i].lower())
+                         or patterns.ocr_canon(tokens[i]) in patterns.CANON_GIVEN_NAMES))):
             anchor[i] = True
 
-    # Rescue a LOWERCASE surname only when a capitalized name word sits right next
-    # to it ("Аброр абламидов", "Akram mo'monov") — a surname shown lowercase in a
-    # CRM card. "импорт контактов" has no such neighbour, so it stays unflagged.
+    # Rescue a LOWERCASE surname only when a REAL given name sits right next to it
+    # ("Аброр абламидов", "Akram mo'monov") — a surname shown lowercase in a CRM
+    # card. The neighbour must itself be an anchor (gazetteer/particle/fused), not
+    # just any capitalized word — otherwise an ordinary Uzbek word that happens to
+    # end in "-ov" ("to'lov" = "payment") gets rescued by sitting next to an
+    # unrelated capitalized English/tech term ("Standard"), which is exactly the
+    # false positive a bilingual Uzbek+English document (tech instructions, forms)
+    # produces constantly. "импорт контактов" still has no anchor neighbour, so it
+    # stays unflagged either way.
     for i in range(n):
         if anchor[i] or not (surname[i] and _usable(i)) or _cap(i):
             continue
-        if any(_plausible(j) and _name_adjacent(words[i].box, words[j].box) for j in range(n)):
+        if any(anchor[j] and _name_adjacent(words[i].box, words[j].box) for j in range(n)):
             anchor[i] = True
 
     cand = anchor[:]
@@ -264,8 +283,13 @@ def detect_names(words: list[Word], gazetteer: set | None = None) -> list[Redact
         for w in ln:
             line_size[words.index(w)] = usable_count
 
-    gaz_hit = [bool(_cap(i) and (tokens[i].lower() in gaz or _gaz_compound_hit(tokens[i].lower())
-                                 or patterns.ocr_canon(tokens[i]) in patterns.CANON_GIVEN_NAMES))
+    def _is_ambiguous(i: int) -> bool:
+        return (tokens[i].lower() in patterns.AMBIGUOUS_GIVEN_NAMES
+                or patterns.ocr_canon(tokens[i]) in patterns.AMBIGUOUS_CANON)
+
+    gaz_hit = [bool(_cap(i) and not _is_ambiguous(i)
+                    and (_gaz_exact_hit(tokens[i].lower()) or _gaz_compound_hit(tokens[i].lower())
+                         or patterns.ocr_canon(tokens[i]) in patterns.CANON_GIVEN_NAMES))
                for i in range(n)]
 
     out: list[Redaction] = []

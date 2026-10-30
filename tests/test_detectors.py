@@ -169,3 +169,30 @@ def test_pinfl_survives_confusable_cyrillic_duplicate_digits():
     ]
     reds = detect(words, min_confidence=0.0)
     assert any(r.category == "pinfl" for r in reds)
+
+
+def test_ambiguous_word_name_homonym_bare_not_flagged():
+    # Real false positive from a user's screenshot: "Mamlakat" is both a real
+    # Uzbek given name AND the ordinary word for "country" -- in an everyday
+    # form label ("Mamlakat — O'zbekiston tanlandi" = "Country — Uzbekistan
+    # selected") it must NOT be flagged just because it's gazetteer-listed.
+    reds = detect(_row(["Mamlakat", "—", "O'zbekiston", "tanlandi"]), min_confidence=0.60)
+    assert not any(r.category == "name" for r in reds)
+
+
+def test_ambiguous_word_name_homonym_still_caught_with_surname():
+    # The same word, next to a REAL surname, is still a real full name and
+    # must still be caught -- the ambiguity guard only blocks it from
+    # anchoring ALONE, not from completing a genuine name cluster.
+    reds = detect(_row(["Mamlakat", "Yusupova"]), min_confidence=0.60)
+    assert any(r.category == "name" and "Mamlakat" in r.text for r in reds)
+
+
+def test_ordinary_word_ending_in_ov_not_rescued_by_unrelated_capitalized_word():
+    # Real false positive: "to'lov" ("payment") ends in "-ov" and sat next to
+    # "Standard" (an English/tech term, not a name) in a bilingual Uzbek+
+    # English tech document. The lowercase-surname rescue must require the
+    # neighbour to be a REAL anchor (an actual name), not just any capitalized
+    # word, or ordinary tech vocabulary next to Uzbek grammar gets flagged.
+    reds = detect(_row(["bo'lmasa", "—", "Standard", "S0", "haqiqiy"]), min_confidence=0.60)
+    assert not any(r.category == "name" for r in reds)
