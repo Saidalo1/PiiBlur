@@ -5,7 +5,9 @@ contract — a blank/synthetic image yields no faces, detect_faces never raises,
 and a found face actually gets obfuscated by redact.apply — without depending
 on any specific face dataset.
 """
-from PIL import Image
+import random
+
+from PIL import Image, ImageDraw
 
 from pii_blur.faces import detect_faces
 
@@ -30,3 +32,19 @@ def test_face_redaction_has_expected_shape():
         assert r.category == "face"
         assert len(r.box) == 4
         assert 0.0 <= r.confidence <= 1.0
+
+
+def test_letter_avatar_circle_is_not_a_face():
+    # Telegram's default avatar for a contact with no photo is a flat colored
+    # circle with a single white letter — the earlier Haar-cascade backend
+    # falsely flagged these as faces (reported by the user on a real chat list
+    # screenshot). Stress-test every letter against several background colors;
+    # YuNet (the current backend) must never fire on any of them.
+    random.seed(2)
+    for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+        img = Image.new("RGB", (120, 120), (25, 28, 35))
+        d = ImageDraw.Draw(img)
+        bg = tuple(random.randint(40, 220) for _ in range(3))
+        d.ellipse((10, 10, 110, 110), fill=bg)
+        d.text((45, 40), letter, fill="white")
+        assert detect_faces(img) == [], f"false positive on letter avatar {letter!r}"

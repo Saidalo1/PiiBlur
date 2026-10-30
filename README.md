@@ -112,10 +112,15 @@ python build.py                 # -> installer_output\PiiBlur_Setup.exe
 
 ## Tech
 
-Python · RapidOCR (ONNX, CPU) · Pillow · pywin32 · pystray · tkinter · PyInstaller + Inno Setup.
-Detection + blur are pure Pillow/stdlib and fully unit-tested (structured PII:
-100% recall, 0% false-positives on the generated suite).
+Python · RapidOCR (ONNX, CPU) · OpenCV (YuNet face detection) · Pillow · pywin32 ·
+pystray · tkinter · PyInstaller + Inno Setup. Detection + blur are pure
+Pillow/stdlib and fully unit-tested (structured PII: 100% recall, 0%
+false-positives on the generated suite).
 
 ## License
 
 [GPLv3](LICENSE). Free and open; forks stay open.
+
+Bundles the [YuNet face detection model](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet)
+(`assets/face_detection_yunet.onnx`, ~230 KB) by Shiqi Yu, part of the OpenCV
+Zoo, under the [MIT License](assets/YUNET_LICENSE.txt).

@@ -154,6 +154,12 @@ COMMON_GIVEN_NAMES = {
     "yusuf", "yusupjon", "zafar", "zafarjon", "zokir", "muhammadali", "mustafo",
     "abdulla", "abdullo", "abdurahmon", "muhammad", "sherali", "qahramon",
     "oybek", "og'abek", "jahon", "sarvar", "sarvarbek", "shavkat", "sobirjon",
+    "shahzod", "shahzodbek", "bunyod", "bunyodbek", "sunnatillo",
+    # "Muhammad-" compound names are extremely common in Uzbekistan and usually
+    # written as ONE word, so each needs its own gazetteer entry (a prefix match
+    # on "muhammad" alone would risk over-matching ordinary text).
+    "muhammadsodiq", "muhammadamin", "muhammadjon", "muhammadrasul",
+    "muhammadyusuf", "muhammadziyo", "muhammadaziz", "muhammadsolih",
     # Uzbek — female
     "dilnoza", "malika", "shahnoza", "nilufar", "zarina", "madina", "sevara",
     "gulnora", "feruza", "nodira", "charos", "saida", "saidalo", "laylo",
@@ -161,6 +167,7 @@ COMMON_GIVEN_NAMES = {
     "soliha", "yasmina", "muslima", "ifora", "xadicha", "nigora", "dildora",
     "shoira", "zilola", "kamola", "nasiba", "umida", "gulbahor", "ozoda",
     "muborak", "mohira", "sarvinoz", "shahlo", "farangiz", "nargiza",
+    "e'zoza", "ezoza", "eʻzoza", "zilola", "mubina", "robiya", "sojida",
     # Russian — male (Latin + Cyrillic)
     "ivan", "sergey", "andrey", "alexey", "dmitry", "mikhail", "nikolay",
     "pavel", "vladimir", "viktor", "oleg", "igor", "roman", "artem", "maxim",

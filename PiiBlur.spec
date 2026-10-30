@@ -26,15 +26,11 @@ try:
 except Exception:
     pass
 
-# Face blurring (pii_blur.faces) needs OpenCV's Haar cascade XML files — these are
-# plain data files inside the cv2 package that PyInstaller doesn't pick up unless
-# told to, so bundle cv2's own data folder explicitly.
-try:
-    import os as _os_cv
-    import cv2
-    datas.append((cv2.data.haarcascades, _os_cv.path.join("cv2", "data")))
-except Exception:
-    pass
+# Face blurring (pii_blur.faces) uses the bundled YuNet ONNX model (assets/) —
+# small (~230KB), MIT-licensed, ships inside the app, no download at runtime.
+if __import__("os").path.exists(__import__("os").path.join("assets", "face_detection_yunet.onnx")):
+    datas.append(("assets/face_detection_yunet.onnx", "assets"))
+    datas.append(("assets/YUNET_LICENSE.txt", "assets"))
 
 hiddenimports += [
     "win32clipboard", "win32gui", "win32con", "win32event", "win32api", "winerror",
