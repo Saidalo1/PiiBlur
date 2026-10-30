@@ -124,8 +124,8 @@ begin
       Result := True
     else if MsgBox('The download was interrupted. PiiBlur will try again ' +
                     '(it resumes from where it stopped, nothing is lost).' +
-                    #13#10#13#10 + 'Keep trying?', mbConfirmation,
-                    MB_YESNO) = IDNO then
+                    Chr(13) + Chr(10) + Chr(13) + Chr(10) + 'Keep trying?',
+                    mbConfirmation, MB_YESNO) = IDNO then
       Exit;  // Result stays False — user chose to stop
     // else: loop again, curl -C - picks up from the partial file
   end;
@@ -138,18 +138,18 @@ var
   ResultCode: Integer;
 begin
   Result := False;
-  {#if PayloadSha256 != ""}
+#if PayloadSha256 != ""
   DownloadPage.SetText('Verifying download…', '');
   ActualHash := GetSHA256OfFile(ZipFile);
   if CompareText(ActualHash, '{#PayloadSha256}') <> 0 then
   begin
     MsgBox('The downloaded file does not match the expected checksum ' +
            '(it may be corrupted or tampered with). Setup cannot continue.' +
-           #13#10#13#10 + 'Expected: {#PayloadSha256}' + #13#10 +
-           'Got: ' + ActualHash, mbError, MB_OK);
+           Chr(13) + Chr(10) + Chr(13) + Chr(10) + 'Expected: {#PayloadSha256}' +
+           Chr(13) + Chr(10) + 'Got: ' + ActualHash, mbError, MB_OK);
     Exit;
   end;
-  {#endif}
+#endif
   DownloadPage.SetText('Extracting PiiBlur…', 'Almost done.');
   ForceDirectories(DestDir);
   // tar.exe (bundled since Windows 10 1803) can extract .zip directly — no
