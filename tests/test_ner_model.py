@@ -9,7 +9,7 @@ from PIL import Image
 
 from pii_blur import patterns
 from pii_blur.config import Settings
-from pii_blur.detectors import Word
+from pii_blur.detectors import Redaction, Word, rescue_adjacent_lowercase_surnames
 from pii_blur.ner_model import detect_names_model
 from pii_blur.pipeline import _merge_overlaps, process_image
 
@@ -65,3 +65,24 @@ def test_pipeline_runs_with_fake_ocr_and_model_default_on():
     words = _row(["Karimov", "Alisher"])
     out, reds = process_image(img, Settings(blur_faces=False), ocr_fn=lambda im: words)
     assert isinstance(reds, list)
+
+
+def test_rescue_bridges_a_model_only_name_to_an_adjacent_surname():
+    # Real bug: a Cyrillic given name the MODEL alone catches (the Latin-biased
+    # gazetteer rules have no anchor for it) sat next to a lowercase Cyrillic
+    # surname that the gazetteer's own rescue couldn't reach either, since that
+    # rescue only trusts RULES anchors (by design, to stop unrelated capitalized
+    # words like "Standard" from rescuing "to'lov"). This cross-source bridge
+    # runs after both detectors, so it sees the model's confirmed name too.
+    words = row = _row(["Аброр", "абламидов"])
+    model_only = [Redaction(words[0].box, "name", 0.66, "Аброр")]  # as if the
+    # model (not the gazetteer) found the given name — rules never anchor it
+    rescued = rescue_adjacent_lowercase_surnames(words, model_only)
+    assert any("абламидов" in r.text for r in rescued)
+
+
+def test_rescue_does_not_fire_without_a_real_confirmed_name_nearby():
+    # No existing name redaction at all -> nothing to bridge to, even if a
+    # lowercase surname-suffix word is present.
+    words = _row(["импорт", "контактов"])
+    assert rescue_adjacent_lowercase_surnames(words, []) == []

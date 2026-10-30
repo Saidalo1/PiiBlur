@@ -4,7 +4,7 @@ We build synthetic OCR `Word`s (text + box) and assert what gets flagged. This i
 how we lock in the tricky cases the research warned about: values SPLIT across
 word boxes (spaced phone / grouped card) and over-redaction.
 """
-from pii_blur.detectors import Word, detect
+from pii_blur.detectors import Word, detect, _dedupe_words, preprocess_words
 
 
 def _row(texts, y=10, x0=10, w=40, h=20, gap=8):
@@ -215,3 +215,24 @@ def test_compound_name_containing_ambiguous_root_still_works():
     # (the guard only applies to the BARE word, not names containing it).
     reds = detect(_row(["Gulnora", "Karimova"]), min_confidence=0.60)
     assert any(r.category == "name" and "Gulnora" in r.text for r in reds)
+
+
+def test_garbled_duplicate_does_not_survive_dedup_over_the_clean_reading():
+    # Real bug: dual-language OCR reading the same Cyrillic word produced "A6pop"
+    # (mixed letters+digits, garbled) from one pass and "Аброр" (clean Cyrillic)
+    # from the other, at the SAME box -- plain first-seen dedup kept whichever
+    # came first regardless of quality. A word mixing letters and digits must
+    # lose to a clean one at the same spot.
+    garbled = Word("A6pop", (10, 10, 50, 17))
+    clean = Word("Аброр", (10, 10, 50, 17))
+    out = _dedupe_words([garbled, clean])
+    assert len(out) == 1 and out[0].text == "Аброр"
+
+
+def test_preprocess_words_is_idempotent():
+    # preprocess_words() is now called once in the pipeline and detect() calls it
+    # again internally on whatever it's handed -- must be safe to run twice.
+    words = _row(["Karimov", "Alisher"])
+    once = preprocess_words(words)
+    twice = preprocess_words(once)
+    assert [w.text for w in once] == [w.text for w in twice]

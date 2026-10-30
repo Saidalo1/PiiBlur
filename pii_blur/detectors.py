@@ -375,16 +375,32 @@ def _box_overlap_frac(a: tuple, b: tuple) -> float:
 # original spelling). Concrete bug this fixes: a PINFL like "3 150590 123 456 0"
 # came through OCR as "3 З 150590 123 456 0 О" (duplicate 3/0 digits picked up
 # as Cyrillic З/О), which doesn't match the 14-digit PINFL pattern at all.
+# Also folds the plain-ASCII confusables (o/O/0, i/l/1) to the SAME target the
+# Cyrillic о/О already fold to — a double-corrupted duplicate like "A6pop" (a
+# Cyrillic name "Аброр" misread as Latin by one OCR pass, where its "о" ALSO
+# landed as a Latin lowercase "o" instead of a digit) needs both fixed at once
+# to fold to the same string as the correctly-read "Аброр" -> "A6p0p".
 _CONFUSABLE_FOLD = str.maketrans({
     "а": "a", "в": "b", "е": "e", "к": "k", "м": "m", "н": "h", "о": "0",
     "р": "p", "с": "c", "т": "t", "у": "y", "х": "x", "з": "3", "б": "6",
     "А": "A", "В": "B", "Е": "E", "К": "K", "М": "M", "Н": "H", "О": "0",
     "Р": "P", "С": "C", "Т": "T", "У": "Y", "Х": "X", "З": "3", "Б": "6",
+    "o": "0", "O": "0", "l": "i", "I": "i", "1": "i",
 })
 
 
 def _confusable_fold(t: str) -> str:
     return t.translate(_CONFUSABLE_FOLD)
+
+
+def _looks_garbled(t: str) -> bool:
+    """A word mixing letters AND digits (e.g. "A6pop") is almost always an OCR
+    misread of a pure-letter word, not a genuine alphanumeric value — real names/
+    words don't normally contain digits. Used to pick the BETTER of two
+    confusable-duplicate readings, not just whichever came first."""
+    has_digit = any(c.isdigit() for c in t)
+    has_letter = any(c.isalpha() for c in t)
+    return has_digit and has_letter
 
 
 def _dedupe_words(words: list[Word]) -> list[Word]:
@@ -393,17 +409,35 @@ def _dedupe_words(words: list[Word]) -> list[Word]:
     collapses those copies so a value isn't double-detected and names aren't doubled.
     Genuine repeats elsewhere on the screen stay (text must also OVERLAP in place).
     Compares text after confusable-folding (see above), so a Latin/Cyrillic
-    look-alike pair at the same spot counts as the same duplicate too — keeping
-    whichever copy was seen first (both OCR langs run in a fixed order, so this
-    is deterministic, not which one is "more correct")."""
+    look-alike pair at the same spot counts as the same duplicate too. Normally
+    keeps whichever copy was seen first (both OCR langs run in a fixed order, so
+    that's deterministic) — EXCEPT when the first one looks garbled (letters mixed
+    with digits, e.g. "A6pop" for "Аброр") and the new one doesn't: then the
+    cleaner reading replaces it, since the garbled one is never the one worth
+    keeping for detection or for what gets shown in logs."""
     out: list[Word] = []
     for w in words:
         t = _confusable_fold(w.text.strip().lower())
-        if any(t == _confusable_fold(k.text.strip().lower()) and _box_overlap_frac(w.box, k.box) > 0.5
-               for k in out):
-            continue
-        out.append(w)
+        dup_idx = next((i for i, k in enumerate(out)
+                        if t == _confusable_fold(k.text.strip().lower())
+                        and _box_overlap_frac(w.box, k.box) > 0.5), None)
+        if dup_idx is None:
+            out.append(w)
+        elif _looks_garbled(out[dup_idx].text) and not _looks_garbled(w.text):
+            out[dup_idx] = w
     return out
+
+
+def preprocess_words(words: list[Word]) -> list[Word]:
+    """Split multi-token OCR 'words' and dedupe cross-language duplicates. Public
+    so the pipeline can run this ONCE and feed the same clean word list to every
+    detector (rules, the neural model, the cross-source surname rescue) — doing
+    it only inside detect() left the model seeing raw, un-deduped words, which is
+    what let a duplicate-but-garbled reading ("A6pop" next to the correctly-read
+    "Аброр") survive as its own false-positive redaction. Idempotent: safe to
+    call again on an already-preprocessed list (e.g. detect() does, for any
+    caller that hands it raw words directly)."""
+    return _dedupe_words(explode_multiword(words))
 
 
 def detect(words: list[Word], *, names: bool = True,
@@ -411,7 +445,7 @@ def detect(words: list[Word], *, names: bool = True,
     """Full detection over OCR words. `names=False` disables the fuzzy name pass
     (keep only rock-solid structured identifiers). `min_confidence` filters out
     weaker guesses. Returns redaction boxes ready for the blur step."""
-    words = _dedupe_words(explode_multiword(words))
+    words = preprocess_words(words)
     results: list[Redaction] = []
     for line in group_lines(words):
         results.extend(detect_structured(line))
@@ -420,3 +454,34 @@ def detect(words: list[Word], *, names: bool = True,
     if names:
         results.extend(detect_names(words, gazetteer))
     return [r for r in results if r.confidence >= min_confidence]
+
+
+def rescue_adjacent_lowercase_surnames(words: list[Word],
+                                       redactions: list[Redaction]) -> list[Redaction]:
+    """Extend ANY already-found name (from the gazetteer, the neural model, or
+    both) with a lowercase surname-suffix word sitting right next to it — e.g. a
+    Cyrillic card showing "Аброр абламидов" where the model catches "Аброр" (it
+    reads Cyrillic directly) but the surname "абламидов" is lowercase and has no
+    independent anchor of its own in the Latin-biased gazetteer rules.
+
+    This runs AFTER both detectors and their merge, as a cross-source bridge:
+    detect_names()'s own lowercase-surname rescue only looks at RULES anchors
+    (deliberately, to stop "to'lov" latching onto an unrelated capitalized word
+    like "Standard" — see its docstring) and so can't see a name the MODEL
+    alone found. Working from the final redaction list sidesteps that without
+    reopening the false-positive hole: only a genuine CONFIRMED name (already
+    past both detectors' own guards) counts as the anchor here, nothing looser.
+    """
+    name_boxes = [r.box for r in redactions if r.category == "name"]
+    if not name_boxes:
+        return []
+    out = []
+    for w in words:
+        t = w.text.strip(_PUNCT)
+        if not t or t[:1].isupper() or not patterns.SURNAME_SUFFIX.fullmatch(t):
+            continue
+        if t.lower() in patterns.NAME_STOPWORDS:
+            continue
+        if any(_name_adjacent(w.box, nb) for nb in name_boxes):
+            out.append(Redaction(w.box, "name", 0.65, w.text))
+    return out

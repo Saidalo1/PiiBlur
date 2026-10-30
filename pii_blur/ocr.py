@@ -38,9 +38,18 @@ def _winocr(img, langs) -> list[Word] | None:
     installed (so Cyrillic works when the Russian pack is present).
 
     Two robustness touches:
-      * small screenshots are upscaled ~2x first — more pixels per glyph makes the
-        engine read small UI text far more reliably (it only adds detail, never
-        drops any), and boxes are scaled back to the original coordinates;
+      * small/narrow screenshots are upscaled ~2x first — more pixels per glyph
+        makes the engine read small UI text far more reliably (it only adds
+        detail, never drops any), and boxes are scaled back to the original
+        coordinates. Checked on WIDTH specifically (not just overall size): a
+        tall phone-style chat list (many rows stacked, narrow width) has small
+        character pixel-height even though the total image is tall — real
+        example that motivated this: a 536x1361 chat screenshot where two full
+        names OCR'd as unreadable fragments ("Sa Iomat Ota 0ta m т u и rodova")
+        at native size, but read perfectly ("Salomat Otamurodova") once
+        upscaled 2x. (OCR research: the real target is glyph cap-height in
+        pixels, not raw image dimensions — width is what actually constrains
+        that for this kind of UI screenshot.)
       * every requested language is tried and the words MERGED, so a card mixing
         Latin (Uzbek) and Cyrillic (Russian) is fully read. A language whose pack
         isn't installed just raises and is skipped.
@@ -50,7 +59,7 @@ def _winocr(img, langs) -> list[Word] | None:
     import winocr  # Windows.Media.Ocr wrapper
 
     base = img.convert("RGB")
-    scale = 2 if max(base.size) < 1200 else 1
+    scale = 2 if (base.width < 900 or max(base.size) < 1200) else 1
     im = base if scale == 1 else base.resize((base.width * scale, base.height * scale))
 
     words: list[Word] = []
