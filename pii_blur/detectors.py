@@ -183,6 +183,21 @@ def detect_names(words: list[Word], gazetteer: set | None = None) -> list[Redact
         t = tokens[i]
         return len(t) >= 2 and _cap(i) and t.isalpha() and _usable(i)
 
+    def _gaz_compound_hit(t_lower: str) -> bool:
+        """True if a gazetteer given name sits at the END of a longer word — a
+        compound name like "Mir+alisher" or "Boto+yor", very common in Uzbek
+        (a root prefix fused onto a recognizable base name, all one OCR token).
+        Guarded two ways to avoid reopening the false-positive problem a plain
+        suffix check would cause: the gazetteer entry must be reasonably long
+        (>=5 chars — short entries like a 3-letter name are too likely to appear
+        as a coincidental word ending), and the word must carry a real prefix
+        (>=2 extra letters), not just be the bare gazetteer word itself (that's
+        already covered by the exact-match check above)."""
+        for g in gaz:
+            if len(g) >= 5 and len(t_lower) >= len(g) + 2 and t_lower.endswith(g):
+                return True
+        return False
+
     # Base anchors — a strong, context-free name signal. A surname suffix counts
     # ONLY when the word is Capitalized: Cyrillic "-ов/-ев/-ин" (and Latin "-ov")
     # are also everyday word endings (genitive plural: "контактов", "один раз"…),
@@ -192,7 +207,8 @@ def detect_names(words: list[Word], gazetteer: set | None = None) -> list[Redact
     for i in range(n):
         if not _usable(i):
             continue
-        if particle[i] or fused[i] or (surname[i] and _cap(i)) or (_cap(i) and tokens[i].lower() in gaz):
+        if (particle[i] or fused[i] or (surname[i] and _cap(i))
+                or (_cap(i) and (tokens[i].lower() in gaz or _gaz_compound_hit(tokens[i].lower())))):
             anchor[i] = True
 
     # Rescue a LOWERCASE surname only when a capitalized name word sits right next
@@ -247,7 +263,8 @@ def detect_names(words: list[Word], gazetteer: set | None = None) -> list[Redact
         for w in ln:
             line_size[words.index(w)] = usable_count
 
-    gaz_hit = [bool(_cap(i) and tokens[i].lower() in gaz) for i in range(n)]
+    gaz_hit = [bool(_cap(i) and (tokens[i].lower() in gaz or _gaz_compound_hit(tokens[i].lower())))
+               for i in range(n)]
 
     out: list[Redaction] = []
     for members in clusters.values():

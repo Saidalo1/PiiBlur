@@ -130,3 +130,20 @@ def test_honorific_does_not_break_isolation():
     # row as a bare contact name — that must not stop the name from being caught.
     reds = detect(_row(["Samandar", "aka", "ака", "(Idrok)"]), min_confidence=0.60)
     assert any(r.category == "name" and "Samandar" in r.text for r in reds)
+
+
+def test_compound_name_with_gazetteer_suffix_is_redacted():
+    # Many Uzbek names are compounds written as ONE word (a root prefix fused
+    # onto a recognizable base name) — e.g. "Mir" + "alisher" = "Miralisher",
+    # the user's real case. "alisher" is in the gazetteer but "Miralisher" isn't
+    # an exact match, so this needs the suffix-compound check to catch it.
+    reds = detect(_row(["Miralisher"]), min_confidence=0.60)
+    assert any(r.category == "name" for r in reds)
+
+
+def test_short_gazetteer_entries_do_not_match_as_compound_suffix():
+    # The compound check only fires for long (>=5 char) gazetteer entries, so a
+    # short one like "anna" (in the gazetteer) can't turn an unrelated word that
+    # happens to end the same way into a false positive.
+    reds = detect(_row(["Savanna"]), min_confidence=0.60)  # ends in "anna", not a name
+    assert not any(r.category == "name" for r in reds)
