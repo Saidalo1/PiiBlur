@@ -341,15 +341,41 @@ def _box_overlap_frac(a: tuple, b: tuple) -> float:
     return inter / smaller
 
 
+# Cyrillic letters that are visually near-identical to a Latin letter or digit —
+# the classic "confusable" set. Running OCR twice (once per language) can read
+# the SAME glyph on screen as the Latin form in one pass and the Cyrillic
+# look-alike in the other (e.g. a lone "3" read as Latin digit by the English
+# pass and as Cyrillic "З" by the Russian pass). Exact-text dedup below doesn't
+# catch that — the strings genuinely differ — so this folds both to one form
+# first, purely for the DEDUP COMPARISON (the real detected text keeps its
+# original spelling). Concrete bug this fixes: a PINFL like "3 150590 123 456 0"
+# came through OCR as "3 З 150590 123 456 0 О" (duplicate 3/0 digits picked up
+# as Cyrillic З/О), which doesn't match the 14-digit PINFL pattern at all.
+_CONFUSABLE_FOLD = str.maketrans({
+    "а": "a", "в": "b", "е": "e", "к": "k", "м": "m", "н": "h", "о": "0",
+    "р": "p", "с": "c", "т": "t", "у": "y", "х": "x", "з": "3", "б": "6",
+    "А": "A", "В": "B", "Е": "E", "К": "K", "М": "M", "Н": "H", "О": "0",
+    "Р": "P", "С": "C", "Т": "T", "У": "Y", "Х": "X", "З": "3", "Б": "6",
+})
+
+
+def _confusable_fold(t: str) -> str:
+    return t.translate(_CONFUSABLE_FOLD)
+
+
 def _dedupe_words(words: list[Word]) -> list[Word]:
     """Drop words that repeat the same text at the same spot. Running Windows OCR
     for several languages (to read Latin AND Cyrillic) reads shared text twice; this
     collapses those copies so a value isn't double-detected and names aren't doubled.
-    Genuine repeats elsewhere on the screen stay (text must also OVERLAP in place)."""
+    Genuine repeats elsewhere on the screen stay (text must also OVERLAP in place).
+    Compares text after confusable-folding (see above), so a Latin/Cyrillic
+    look-alike pair at the same spot counts as the same duplicate too — keeping
+    whichever copy was seen first (both OCR langs run in a fixed order, so this
+    is deterministic, not which one is "more correct")."""
     out: list[Word] = []
     for w in words:
-        t = w.text.strip().lower()
-        if any(t == k.text.strip().lower() and _box_overlap_frac(w.box, k.box) > 0.5
+        t = _confusable_fold(w.text.strip().lower())
+        if any(t == _confusable_fold(k.text.strip().lower()) and _box_overlap_frac(w.box, k.box) > 0.5
                for k in out):
             continue
         out.append(w)

@@ -147,3 +147,25 @@ def test_short_gazetteer_entries_do_not_match_as_compound_suffix():
     # happens to end the same way into a false positive.
     reds = detect(_row(["Savanna"]), min_confidence=0.60)  # ends in "anna", not a name
     assert not any(r.category == "name" for r in reds)
+
+
+def test_pinfl_survives_confusable_cyrillic_duplicate_digits():
+    # Real bug from the user's own demo screenshot: dual-language OCR (en-US +
+    # ru) sometimes reads the SAME glyph twice — once correctly as a Latin
+    # digit, once as a visually-identical Cyrillic letter ("3"/"З", "0"/"О") at
+    # the exact same box — which isn't caught by plain exact-text dedup (the
+    # strings genuinely differ) and corrupts the 14-digit PINFL pattern:
+    # "3 150590 123 456 0" arrived as "3 З 150590 123 456 0 О". Build that
+    # exact corrupted word list and confirm PINFL is still found.
+    words = [
+        Word("PINFL:", (0, 10, 50, 20)),
+        Word("3", (60, 10, 10, 20)),
+        Word("З", (60, 10, 10, 20)),       # Cyrillic look-alike, same box
+        Word("150590", (75, 10, 60, 20)),
+        Word("123", (140, 10, 30, 20)),
+        Word("456", (175, 10, 30, 20)),
+        Word("0", (210, 10, 10, 20)),
+        Word("О", (210, 10, 10, 20)),       # Cyrillic look-alike, same box
+    ]
+    reds = detect(words, min_confidence=0.0)
+    assert any(r.category == "pinfl" for r in reds)
