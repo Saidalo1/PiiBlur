@@ -65,8 +65,20 @@ for _dll in ("msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll", "concrt14
 
 # Heavy libraries nothing here uses — excluded so a transitive import can't bloat
 # the build. (RapidOCR's real deps — numpy, opencv, onnxruntime — are kept.)
+#
+# torch/transformers/accelerate/optimum/datasets/safetensors are explicitly
+# excluded even though pii_blur never imports them: this dev machine also has
+# the ML-fine-tuning environment's packages installed in the SAME global
+# Python (not an isolated venv), and PyInstaller's hook-collection picked torch
+# up anyway (confirmed: a build without these excludes bundled an 887MB dist
+# with torch/torchvision inside, vs. the expected ~300MB — a real incident, not
+# a hypothetical one). The name model ships as a plain ONNX file read via
+# onnxruntime + tokenizers; nothing here legitimately needs a training
+# framework, so this exclusion is safe regardless of root cause.
 _HEAVY = ["matplotlib", "pandas", "PyQt5", "PyQt6", "PySide2", "PySide6",
-          "IPython", "notebook", "pytest", "tornado", "sympy", "scipy.spatial.cKDTree"]
+          "IPython", "notebook", "pytest", "tornado", "sympy", "scipy.spatial.cKDTree",
+          "torch", "torchvision", "torchaudio", "transformers", "accelerate",
+          "optimum", "datasets", "tensorboard", "safetensors"]
 
 # Bundle the tray/app icon so the tray shows the real icon at runtime.
 if _os.path.exists("app_icon.png"):
