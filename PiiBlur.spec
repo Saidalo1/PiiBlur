@@ -32,6 +32,19 @@ if __import__("os").path.exists(__import__("os").path.join("assets", "face_detec
     datas.append(("assets/face_detection_yunet.onnx", "assets"))
     datas.append(("assets/YUNET_LICENSE.txt", "assets"))
 
+# Neural name model (pii_blur.ner_model): the 64MB int8 ONNX + its tokenizer, plus
+# the Uzbek names list. The `tokenizers` lib has a Rust extension to collect.
+import os as _osn
+for _f in ("assets/ner/ner_model_int8.onnx", "assets/ner/tokenizer.json",
+           "pii_blur/data/uz_names.txt"):
+    if _osn.path.exists(_f):
+        datas.append((_f, _osn.path.dirname(_f)))
+try:
+    _d, _b, _h = collect_all("tokenizers")
+    datas += _d; binaries += _b; hiddenimports += _h
+except Exception:
+    pass
+
 hiddenimports += [
     "win32clipboard", "win32gui", "win32con", "win32event", "win32api", "winerror",
     "pystray._win32",

@@ -103,6 +103,9 @@ def main():
     def _warm():
         from pii_blur import ocr
         ocr.warmup(settings.ocr_langs)
+        if settings.name_model:
+            from pii_blur import ner_model
+            ner_model.warmup()
     threading.Thread(target=_warm, name="ocr-warmup", daemon=True).start()
 
     icon = pystray.Icon("pii_blur")
@@ -120,6 +123,10 @@ def main():
 
     def toggle_faces(_icon, item):
         settings.blur_faces = not settings.blur_faces
+        settings_store.save(settings)
+
+    def toggle_model(_icon, item):
+        settings.name_model = not settings.name_model
         settings_store.save(settings)
 
     def toggle_autostart(_icon, item):
@@ -140,6 +147,8 @@ def main():
         pystray.MenuItem("Settings…", open_settings, default=True),
         pystray.MenuItem("Blur names (fuzzy)", toggle_names,
                          checked=lambda item: settings.detect_names),
+        pystray.MenuItem("Smart name model (AI)", toggle_model,
+                         checked=lambda item: settings.name_model),
         pystray.MenuItem("Blur faces", toggle_faces,
                          checked=lambda item: settings.blur_faces),
         pystray.MenuItem("Start with Windows", toggle_autostart,

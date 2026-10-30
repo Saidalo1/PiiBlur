@@ -8,7 +8,10 @@ from dataclasses import dataclass, field
 @dataclass
 class Settings:
     # Detection
-    detect_names: bool = True          # the fuzzy name pass (toggleable)
+    detect_names: bool = True          # the gazetteer/rules name pass (toggleable)
+    name_model: bool = True            # ALSO run the neural name model (hybrid) —
+                                        # catches unknown/unlisted names the
+                                        # gazetteer can't; on by default
     blur_faces: bool = True            # also blur detected faces
     min_confidence: float = 0.60       # drop weaker guesses below this
     # Redaction look

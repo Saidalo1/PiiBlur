@@ -163,7 +163,7 @@ def detect_names(words: list[Word], gazetteer: set | None = None) -> list[Redact
     Working on 2D positions (not per text line) is what joins a name split across
     two OCR lines, while the adjacency caps keep the box from over-reaching. Lower
     confidence by design — names are the unreliable part."""
-    gaz = patterns.COMMON_GIVEN_NAMES if gazetteer is None else gazetteer
+    gaz = patterns.COMMON_GIVEN_NAMES_ALL if gazetteer is None else gazetteer
     n = len(words)
     tokens = [w.text.strip(_PUNCT) for w in words]
 
@@ -187,13 +187,13 @@ def detect_names(words: list[Word], gazetteer: set | None = None) -> list[Redact
         """True if a gazetteer given name sits at the END of a longer word — a
         compound name like "Mir+alisher" or "Boto+yor", very common in Uzbek
         (a root prefix fused onto a recognizable base name, all one OCR token).
-        Guarded two ways to avoid reopening the false-positive problem a plain
-        suffix check would cause: the gazetteer entry must be reasonably long
-        (>=5 chars — short entries like a 3-letter name are too likely to appear
-        as a coincidental word ending), and the word must carry a real prefix
-        (>=2 extra letters), not just be the bare gazetteer word itself (that's
-        already covered by the exact-match check above)."""
-        for g in gaz:
+        Guarded three ways to avoid reopening the false-positive problem a plain
+        suffix check would cause: it iterates ONLY the small curated core list (not
+        the 11k imported names — a huge list of endings would match ordinary words),
+        the entry must be reasonably long (>=5 chars), and the word must carry a
+        real prefix (>=2 extra letters), not just be the bare name (exact match
+        above covers that)."""
+        for g in patterns.COMMON_GIVEN_NAMES:
             if len(g) >= 5 and len(t_lower) >= len(g) + 2 and t_lower.endswith(g):
                 return True
         return False

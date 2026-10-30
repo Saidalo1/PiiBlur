@@ -138,6 +138,26 @@ NAME_STOPWORDS = {
     "voice", "message", "sticker", "video", "photo", "file", "saved", "messages",
 }
 
+# Fixed UI/chrome strings of chat & CRM apps (and a few common OCR-garbled forms)
+# — a CLOSED, known set the neural model tends to misfire on. Used to filter the
+# model pass (pii_blur.ner_model), kept separate from NAME_STOPWORDS so it doesn't
+# touch the gazetteer logic. Deliberately excludes anything that could be a real
+# name (e.g. "Bahor"), only app chrome and clear status words.
+UI_STOPWORDS = {
+    "rad", "pad", "ha", "pa", "batafsil", "batafsi", "qandu", "qanday", "cookie",
+    "new", "all", "fixed", "yangi", "korea", "study", "yopish", "bosh", "sahifa",
+    "vazifalar", "devices", "sozlamalar", "sorlamalar", "pdf", "telefon", "teiefon",
+    "raqam", "yosh", "oquv", "0quv", "ochiq", "sohasi", "sohas", "til", "sertifikati",
+    "sertlfikati", "topik", "izoh", "jarayonda", "bakalavr", "magistratura",
+    "bitirganman", "olmaganman", "oturganman", "diurganman", "javobini", "javoblm",
+    "javobi", "avval", "olish", "kotardi", "kotarmadi", "sinfni", "lichkaga",
+    "chiqdim", "opam", "father", "sohada", "kasbiy", "mashinasozlik", "tashlab",
+    "oktabr", "sayt", "ball", "daraja", "nomlarini", "nomlari", "field", "tepadegi",
+    "man", "yoq", "koa", "kod", "ang", "eshitmaganakanman", "tushundim", "tushunmima",
+    "qoyilindi", "telegramdan", "batafsii", "sticker", "messages", "voice", "message",
+    "va", "aka", "ака", "had", "hop", "нор", "ok", "rahmat", "don", "know", "told",
+}
+
 COMMON_GIVEN_NAMES = {
     # Uzbek — male
     "alisher", "aziz", "jasur", "bobur", "sardor", "jahongir", "akmal", "akbar",
@@ -181,3 +201,31 @@ COMMON_GIVEN_NAMES = {
     "елена", "ольга", "наталья", "анна", "мария", "екатерина", "татьяна",
     "светлана", "ирина", "юлия", "марина", "оксана", "виктория",
 }
+
+
+def _load_uz_names() -> set:
+    """Load the large Uzbek given-name list (data/uz_names.txt), lowercased.
+
+    Source: the ~12k-name gazetteer published with the open-access *Data in Brief*
+    article behind the Uzbek hybrid NER–sentiment model (CC BY; a list of names is
+    also factual data). Cleaned here to drop ~2% OCR-garbled entries. Used for
+    EXACT given-name matches only (not the compound-suffix check), so a big list
+    can't widen that check into false positives. Best-effort: missing file -> empty.
+    """
+    import os
+    import sys
+    base = getattr(sys, "_MEIPASS", None) or os.path.dirname(os.path.abspath(__file__))
+    for path in (os.path.join(base, "pii_blur", "data", "uz_names.txt"),
+                 os.path.join(base, "data", "uz_names.txt"),
+                 os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "uz_names.txt")):
+        try:
+            with open(path, encoding="utf-8") as f:
+                return {ln.strip().lower() for ln in f if ln.strip()}
+        except Exception:
+            continue
+    return set()
+
+
+# The curated core (above) drives the compound-suffix check; the full set (core +
+# the imported list) drives exact given-name matching.
+COMMON_GIVEN_NAMES_ALL = COMMON_GIVEN_NAMES | _load_uz_names()

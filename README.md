@@ -110,17 +110,43 @@ pytest -q                       # 14,000+ generated tests
 python build.py                 # -> installer_output\PiiBlur_Setup.exe
 ```
 
+## Names: a hybrid
+
+Names are the hard part, so PiiBlur blurs them with a **hybrid** (each layer covers
+the others' blind spots):
+
+- **Gazetteer + rules** — a list of common Uzbek/Russian given names plus
+  surname-suffix rules (`-ov/-ova`, `o'g'li/qizi`). Rock-solid on known names and
+  the only layer that reads **Cyrillic**.
+- **A small neural model** — a 64 MB int8 BERT NER fine-tuned for Uzbek (Latin),
+  which generalizes to names *not* in any list (unlisted surnames, lowercase
+  handles). This is what lets it scale beyond a hand-list.
+- **A fixed-UI stoplist** — drops the model's characteristic false positives on app
+  chrome (status badges, menu labels).
+
+On held-out, *unseen* names from real screenshots this roughly doubles the
+gazetteer-only recall (≈42% → ≈84%) while keeping false positives near zero.
+Toggle the model off in Settings for a lighter, faster, gazetteer-only run.
+
 ## Tech
 
-Python · RapidOCR (ONNX, CPU) · OpenCV (YuNet face detection) · Pillow · pywin32 ·
-pystray · tkinter · PyInstaller + Inno Setup. Detection + blur are pure
-Pillow/stdlib and fully unit-tested (structured PII: 100% recall, 0%
-false-positives on the generated suite).
+Python · RapidOCR (ONNX, CPU) · OpenCV (YuNet face detection) · ONNX NER model +
+tokenizers · Pillow · pywin32 · pystray · tkinter · PyInstaller + Inno Setup.
+Detection + blur are pure Pillow/stdlib and fully unit-tested (structured PII:
+100% recall, 0% false-positives on the generated suite).
 
-## License
+## License & credits
 
 [GPLv3](LICENSE). Free and open; forks stay open.
 
-Bundles the [YuNet face detection model](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet)
-(`assets/face_detection_yunet.onnx`, ~230 KB) by Shiqi Yu, part of the OpenCV
-Zoo, under the [MIT License](assets/YUNET_LICENSE.txt).
+Bundled third-party assets:
+
+- **Face detection** — [YuNet](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet)
+  (`assets/face_detection_yunet.onnx`, ~230 KB) by Shiqi Yu, OpenCV Zoo,
+  [MIT License](assets/YUNET_LICENSE.txt).
+- **Name model** — a BERT NER fine-tuned by this project on public Uzbek NER data,
+  on top of [TahrirchiBERT-small](https://huggingface.co/tahrirchi/tahrirchi-bert-small) (Apache-2.0).
+- **Uzbek names list** (`pii_blur/data/uz_names.txt`) — derived from the name
+  gazetteer published with the open-access *Data in Brief* dataset accompanying
+  "A Hybrid NER–Sentiment Model for Uzbek Texts" (CC BY); cleaned to drop
+  OCR-garbled entries.
