@@ -27,6 +27,9 @@
 #ifndef PayloadSha256
   #define PayloadSha256 ""
 #endif
+#ifndef PayloadSizeBytes
+  #define PayloadSizeBytes 0
+#endif
 
 [Setup]
 AppId={{9C2F7A61-4B3D-4E8A-9F12-7E5A1C0D3B44}
@@ -104,27 +107,71 @@ end;
 // install needed. -C - resumes a partial download instead of restarting; the
 // outer loop re-invokes curl (still with -C -) if IT gives up, so a flaky
 // connection is retried indefinitely rather than failing the whole install.
+function FormatMB(const Bytes: Int64): String;
+begin
+  Result := IntToStr(Bytes div (1024 * 1024));
+end;
+
+function CurrentFileSize(const FileName: String): Int64;
+var
+  FindRec: TFindRec;
+begin
+  Result := 0;
+  if FindFirst(FileName, FindRec) then
+  begin
+    Result := FindRec.SizeHigh * $100000000 + FindRec.SizeLow;
+    FindClose(FindRec);
+  end;
+end;
+
 function RunCurl(const Url, DestFile: String): Boolean;
 var
   ResultCode: Integer;
-  Attempt: Integer;
   Params: String;
+  TotalBytes, GotBytes, LastBytes, StallCount: Int64;
 begin
   Result := False;
-  Attempt := 0;
-  Params := '-L -C - --retry 20 --retry-delay 5 --retry-all-errors '
+  TotalBytes := {#PayloadSizeBytes};
+  // Download in short (15s) bursts rather than one long blocking call, so we
+  // can check the partial file's size BETWEEN bursts and show real progress —
+  // -C - (resume) means each burst picks up exactly where the last left off,
+  // so nothing already downloaded is wasted.
+  Params := '-s -L -C - --max-time 15 --retry 2 --retry-delay 3 '
     + '-o "' + DestFile + '" "' + Url + '"';
-  while not Result do
+  LastBytes := -1;
+  StallCount := 0;
+  while True do
   begin
-    Attempt := Attempt + 1;
-    DownloadPage.SetText('Downloading PiiBlur components (attempt ' +
-      IntToStr(Attempt) + ')…', 'This can take a while on a slow connection.');
-    if Exec(ExpandConstant('{sys}\curl.exe'), Params, '', SW_SHOWNORMAL,
-            ewWaitUntilTerminated, ResultCode) and (ResultCode = 0) then
-      Result := True
-    else if MsgBox('The download was interrupted. PiiBlur will try again ' +
-                    '(it resumes from where it stopped, nothing is lost).' +
-                    Chr(13) + Chr(10) + Chr(13) + Chr(10) + 'Keep trying?',
+    // SW_HIDE: no visible console window — a flashing terminal during setup
+    // looks alarming (like a virus) to a non-technical user.
+    Exec(ExpandConstant('{sys}\curl.exe'), Params, '', SW_HIDE,
+         ewWaitUntilTerminated, ResultCode);
+    GotBytes := CurrentFileSize(DestFile);
+    if TotalBytes > 0 then
+    begin
+      DownloadPage.SetProgress(GotBytes, TotalBytes);
+      DownloadPage.SetText('Downloading PiiBlur…',
+        FormatMB(GotBytes) + ' MB of ' + FormatMB(TotalBytes) + ' MB');
+    end
+    else
+      DownloadPage.SetText('Downloading PiiBlur…', FormatMB(GotBytes) + ' MB so far');
+    if (TotalBytes > 0) and (GotBytes >= TotalBytes) then
+    begin
+      Result := True;
+      Exit;
+    end;
+    if GotBytes = LastBytes then
+      StallCount := StallCount + 1
+    else
+      StallCount := 0;
+    LastBytes := GotBytes;
+    // No progress across several bursts in a row (not just one slow chunk) —
+    // likely offline/blocked, not just slow. Ask before continuing to retry
+    // forever silently.
+    if StallCount >= 4 then
+    if MsgBox('The download does not seem to be progressing. PiiBlur will ' +
+              'keep trying — it resumes from where it stopped, nothing is ' +
+              'lost.' + Chr(13) + Chr(10) + Chr(13) + Chr(10) + 'Keep trying?',
                     mbConfirmation, MB_YESNO) = IDNO then
       Exit;  // Result stays False — user chose to stop
     // else: loop again, curl -C - picks up from the partial file
