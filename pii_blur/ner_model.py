@@ -105,18 +105,25 @@ def detect_names_model(words: list[Word], min_score: float = 0.6,
     leaves half a name visible). Latin-dominant words only; stopwords excluded."""
     if not _load():
         return []
+    from pii_blur import translit
+
     stop = stopwords if stopwords is not None else set()
     out: list[Redaction] = []
     try:
         for line in group_lines(words):
             line = sorted(line, key=lambda w: w.box[0])
+            # Build the line in LATIN: a Cyrillic word is transliterated so the
+            # Latin-only model can read it ("Аброр" -> "Abror"). spans still point
+            # at the ORIGINAL Word (its box), and we snap to whole words, so the
+            # length change from transliteration doesn't matter.
             text, spans = "", []           # spans: (start, end, word) in `text`
             for w in line:
+                latin = translit.transliterate(w.text) if translit.is_cyrillic(w.text) else w.text
                 if text:
                     text += " "
                 start = len(text)
-                text += w.text
-                spans.append((start, start + len(w.text), w))
+                text += latin
+                spans.append((start, start + len(latin), w))
             flagged = _person_char_mask(text, min_score)
             if not flagged:
                 continue
@@ -124,9 +131,10 @@ def detect_names_model(words: list[Word], min_score: float = 0.6,
                 if not any(c in flagged for c in range(start, end)):
                     continue
                 token = re.sub(r"[^\w']", "", w.text)
-                if len(token) < 2 or not _latin_dominant(w.text):
+                if len(token) < 2:
                     continue
-                if token.lower() in stop:
+                # Drop UI chrome (checked in both the original and transliterated form).
+                if token.lower() in stop or translit.transliterate(token).lower() in stop:
                     continue
                 out.append(Redaction(w.box, "name", 0.66, w.text))
     except Exception:

@@ -229,3 +229,24 @@ def _load_uz_names() -> set:
 # The curated core (above) drives the compound-suffix check; the full set (core +
 # the imported list) drives exact given-name matching.
 COMMON_GIVEN_NAMES_ALL = COMMON_GIVEN_NAMES | _load_uz_names()
+
+
+def ocr_canon(s: str) -> str:
+    """Fold the characters OCR most often confuses so a garbled name still matches
+    the gazetteer: capital-I / lowercase-l / 1 / | all read alike, and o / 0 alike.
+    Lets "MiraIisher" (OCR misread) match "Miralisher". Conservative — only these
+    few well-known confusions, to keep accidental collisions rare."""
+    s = s.lower()
+    out = []
+    for c in s:
+        if c in "il1|!":
+            out.append("i")
+        elif c in "o0":
+            out.append("o")
+        else:
+            out.append(c)
+    return "".join(out)
+
+
+# Canonical forms of every gazetteer name, for the OCR-tolerant fallback match.
+CANON_GIVEN_NAMES = {ocr_canon(n) for n in COMMON_GIVEN_NAMES_ALL}

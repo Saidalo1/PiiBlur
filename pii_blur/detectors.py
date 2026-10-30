@@ -208,7 +208,8 @@ def detect_names(words: list[Word], gazetteer: set | None = None) -> list[Redact
         if not _usable(i):
             continue
         if (particle[i] or fused[i] or (surname[i] and _cap(i))
-                or (_cap(i) and (tokens[i].lower() in gaz or _gaz_compound_hit(tokens[i].lower())))):
+                or (_cap(i) and (tokens[i].lower() in gaz or _gaz_compound_hit(tokens[i].lower())
+                                 or patterns.ocr_canon(tokens[i]) in patterns.CANON_GIVEN_NAMES))):
             anchor[i] = True
 
     # Rescue a LOWERCASE surname only when a capitalized name word sits right next
@@ -263,7 +264,8 @@ def detect_names(words: list[Word], gazetteer: set | None = None) -> list[Redact
         for w in ln:
             line_size[words.index(w)] = usable_count
 
-    gaz_hit = [bool(_cap(i) and (tokens[i].lower() in gaz or _gaz_compound_hit(tokens[i].lower())))
+    gaz_hit = [bool(_cap(i) and (tokens[i].lower() in gaz or _gaz_compound_hit(tokens[i].lower())
+                                 or patterns.ocr_canon(tokens[i]) in patterns.CANON_GIVEN_NAMES))
                for i in range(n)]
 
     out: list[Redaction] = []
