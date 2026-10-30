@@ -26,6 +26,16 @@ try:
 except Exception:
     pass
 
+# Face blurring (pii_blur.faces) needs OpenCV's Haar cascade XML files — these are
+# plain data files inside the cv2 package that PyInstaller doesn't pick up unless
+# told to, so bundle cv2's own data folder explicitly.
+try:
+    import os as _os_cv
+    import cv2
+    datas.append((cv2.data.haarcascades, _os_cv.path.join("cv2", "data")))
+except Exception:
+    pass
+
 hiddenimports += [
     "win32clipboard", "win32gui", "win32con", "win32event", "win32api", "winerror",
     "pystray._win32",

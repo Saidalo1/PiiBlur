@@ -233,22 +233,50 @@ def detect_names(words: list[Word], gazetteer: set | None = None) -> list[Redact
     for i in idx:
         clusters.setdefault(_find(i), []).append(i)
 
+    # How many MEANING-BEARING words share a word's physical text line — used
+    # below to tell a standalone contact name ("Isroilov", alone on its own UI
+    # row) from an ordinary word that happens to end in -ов/-ev inside a sentence
+    # ("...CSV-импорт контактов..."). A genitive-plural noun is always embedded in
+    # a longer phrase; a name shown alone in a chat list or contact card is not.
+    # Stopwords/honorifics ("aka", "Instagram"...) don't count — they regularly
+    # sit next to a bare name (e.g. dual-language OCR reading "aka" AND "ака" on
+    # the same row) without making it a sentence.
+    line_size = {}
+    for ln in group_lines(words):
+        usable_count = sum(1 for w in ln if _usable(words.index(w)))
+        for w in ln:
+            line_size[words.index(w)] = usable_count
+
+    gaz_hit = [bool(_cap(i) and tokens[i].lower() in gaz) for i in range(n)]
+
     out: list[Redaction] = []
     for members in clusters.values():
         has_particle = any(particle[k] for k in members)
         has_fused = any(fused[k] for k in members)
         has_surname = any(surname[k] for k in members)
-        if not (has_particle or has_fused or has_surname or len(members) >= 2):
+        has_gaz = any(gaz_hit[k] for k in members)
+        if not (has_particle or has_fused or has_surname or has_gaz or len(members) >= 2):
             continue
         members.sort()
-        # A full name (given + surname, or with a patronymic) is confident; a LONE
-        # surname word on its own gets 0.50 so the default min_confidence (0.60)
-        # drops it — this is what keeps a stray capitalized "-ов" word ("Готов",
-        # "Контактов" at a sentence start) from being blurred.
+        isolated = len(members) == 1 and line_size.get(members[0], 99) <= 2
+        # A full name (given + surname, or with a patronymic) is confident. A LONE
+        # surname or gazetteer given-name word scores 0.50 by default — below
+        # min_confidence (0.60) — so a stray capitalized "-ов" word mid-sentence
+        # ("Готов", "Контактов") or a dual-purpose gazetteer word used as an
+        # ordinary adjective ("Озод" = "free") is not blurred. But when that word
+        # is ISOLATED on its own short line (a contact name shown alone, not part
+        # of a sentence — exactly how a chat-list/CRM card shows a bare "Timur" or
+        # "Isroilov"), it's rescued to 0.65: real standalone names behave this way;
+        # ordinary words embedded in a sentence don't.
         if has_particle or has_fused:
             conf = 0.78
-        elif has_surname:
-            conf = 0.70 if len(members) >= 2 else 0.50
+        elif has_surname or has_gaz:
+            if len(members) >= 2:
+                conf = 0.70
+            elif isolated:
+                conf = 0.65
+            else:
+                conf = 0.50
         else:
             conf = 0.55
         out.append(Redaction(

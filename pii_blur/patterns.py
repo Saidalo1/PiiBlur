@@ -134,20 +134,43 @@ NAME_STOPWORDS = {
     "vk", "email", "phone", "tel", "lead", "new", "status", "source", "manager",
     "bugun", "kecha", "ertaga", "today", "сегодня", "вчера", "завтра", "новый",
     "lid", "mijoz", "client", "заявка", "клиент",
+    "aka", "opa", "uka", "singil", "amaki", "xola", "ака", "апа", "ука",
+    "voice", "message", "sticker", "video", "photo", "file", "saved", "messages",
 }
 
 COMMON_GIVEN_NAMES = {
-    # Uzbek
+    # Uzbek — male
     "alisher", "aziz", "jasur", "bobur", "sardor", "jahongir", "akmal", "akbar",
-    "ulugbek", "bekzod", "sherzod", "doston", "oybek", "temur", "sanjar",
+    "ulugbek", "bekzod", "sherzod", "doston", "oybek", "temur", "timur", "sanjar",
     "akram", "sunnat", "murod", "jamshid", "jasurbek", "sardorbek", "ozod",
     "shuhrat", "rustam", "farhod", "umar", "husan", "hasan", "diyor", "asror",
+    "saidolim", "saidali", "said", "samandar", "idrok", "mironshoh", "miron",
+    "saparali", "adambay", "isroil", "islom", "shoh", "shohruh", "shohjahon",
+    "botir", "botirjon", "davron", "davronbek", "elyor", "eldor", "fozil",
+    "gayrat", "g'ayrat", "ilhom", "ilhomjon", "javlon", "javohir", "kamol",
+    "kamoliddin", "komil", "lochin", "mansur", "muzaffar", "nodirbek", "nurbek",
+    "nurlan", "ortiq", "otabek", "rasul", "ravshan", "sardor", "sobir",
+    "sodiq", "tohir", "tolib", "ulug'bek", "umid", "umidjon", "xasan", "xurshid",
+    "yusuf", "yusupjon", "zafar", "zafarjon", "zokir", "muhammadali", "mustafo",
+    "abdulla", "abdullo", "abdurahmon", "muhammad", "sherali", "qahramon",
+    "oybek", "og'abek", "jahon", "sarvar", "sarvarbek", "shavkat", "sobirjon",
+    # Uzbek — female
     "dilnoza", "malika", "shahnoza", "nilufar", "zarina", "madina", "sevara",
     "gulnora", "feruza", "nodira", "charos", "saida", "saidalo", "laylo",
     "mehrona", "sabina", "nozima", "gavhar", "dilafruz", "shahzoda", "ruxshona",
-    # Russian (Latin + Cyrillic)
+    "soliha", "yasmina", "muslima", "ifora", "xadicha", "nigora", "dildora",
+    "shoira", "zilola", "kamola", "nasiba", "umida", "gulbahor", "ozoda",
+    "muborak", "mohira", "sarvinoz", "shahlo", "farangiz", "nargiza",
+    # Russian — male (Latin + Cyrillic)
     "ivan", "sergey", "andrey", "alexey", "dmitry", "mikhail", "nikolay",
-    "elena", "olga", "natalia", "anna", "maria", "ekaterina", "tatiana",
+    "pavel", "vladimir", "viktor", "oleg", "igor", "roman", "artem", "maxim",
+    "денис", "евгений", "александр", "антон", "кирилл",
     "иван", "сергей", "андрей", "алексей", "дмитрий", "михаил", "николай",
+    "павел", "владимир", "виктор", "олег", "игорь", "роман", "артём", "максим",
+    "denis", "evgeny", "alexander", "anton", "kirill",
+    # Russian — female (Latin + Cyrillic)
+    "elena", "olga", "natalia", "anna", "maria", "ekaterina", "tatiana",
+    "svetlana", "irina", "julia", "yulia", "marina", "oksana", "viktoria",
     "елена", "ольга", "наталья", "анна", "мария", "екатерина", "татьяна",
+    "светлана", "ирина", "юлия", "марина", "оксана", "виктория",
 }

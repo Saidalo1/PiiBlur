@@ -84,3 +84,49 @@ def test_plain_text_not_redacted():
     # Ordinary words must NOT be flagged (guard against over-redaction).
     reds = detect(_row(["Bugun", "ob-havo", "yaxshi", "va", "issiq"]))
     assert reds == []
+
+
+def test_lowercase_surname_suffix_mid_sentence_not_redacted():
+    # Cyrillic/Latin -ov/-ev/-ova endings are ALSO ordinary genitive-plural word
+    # endings ("контактов", "городов") — a capitalized one embedded in a longer
+    # sentence must not be treated as a surname (this is the korvisa.uz privacy-
+    # page false positive the user hit).
+    reds = detect(_row(["Shuningdek,", "reklama", "va", "tahlil", "uchun",
+                        "cookie", "va", "shunga", "o'xshash"]))
+    assert not any(r.category == "name" for r in reds)
+    reds2 = detect(_row(["CSV-import", "kontaktov", "bajarildi", "muvaffaqiyatli"]))
+    assert not any(r.category == "name" for r in reds2)
+
+
+def test_isolated_surname_alone_on_its_line_is_redacted():
+    # A bare surname shown alone (a Telegram/CRM contact name, nothing else on its
+    # row) IS a real name and should be caught even with no given-name neighbour —
+    # this is the "Isroilov" case from the user's real chat list. Threshold passed
+    # explicitly: this is what the app's default min_confidence (0.60) applies.
+    reds = detect(_row(["Isroilov"]), min_confidence=0.60)
+    assert any(r.category == "name" for r in reds)
+
+
+def test_isolated_gazetteer_given_name_alone_is_redacted():
+    # A bare given name alone on its row (no surname suffix at all) — e.g. "Timur"
+    # shown as a contact's display name — should also be caught via the gazetteer.
+    reds = detect(_row(["Timur"]), min_confidence=0.60)
+    assert any(r.category == "name" for r in reds)
+
+
+def test_gazetteer_name_mid_sentence_not_over_confident():
+    # The same gazetteer word, embedded in a longer unrelated line (not isolated
+    # on its own row), must NOT get the "isolated standalone name" boost — its
+    # score (0.50) stays below the app's default min_confidence (0.60, applied by
+    # Settings/pipeline — detect() itself defaults to 0.0), same as a lone
+    # mid-sentence surname.
+    reds = detect(_row(["Umid", "qilamizki", "barchasi", "yaxshi", "bo'ladi"]),
+                  min_confidence=0.60)
+    assert not any(r.category == "name" for r in reds)
+
+
+def test_honorific_does_not_break_isolation():
+    # Dual-language OCR often reads an honorific twice ("aka" + "ака") on the same
+    # row as a bare contact name — that must not stop the name from being caught.
+    reds = detect(_row(["Samandar", "aka", "ака", "(Idrok)"]), min_confidence=0.60)
+    assert any(r.category == "name" and "Samandar" in r.text for r in reds)

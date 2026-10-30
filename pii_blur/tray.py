@@ -116,6 +116,11 @@ def main():
 
     def toggle_names(_icon, item):
         settings.detect_names = not settings.detect_names
+        settings_store.save(settings)
+
+    def toggle_faces(_icon, item):
+        settings.blur_faces = not settings.blur_faces
+        settings_store.save(settings)
 
     def toggle_autostart(_icon, item):
         from pii_blur import autostart
@@ -135,6 +140,8 @@ def main():
         pystray.MenuItem("Settings…", open_settings, default=True),
         pystray.MenuItem("Blur names (fuzzy)", toggle_names,
                          checked=lambda item: settings.detect_names),
+        pystray.MenuItem("Blur faces", toggle_faces,
+                         checked=lambda item: settings.blur_faces),
         pystray.MenuItem("Start with Windows", toggle_autostart,
                          checked=lambda item: _autostart_state()),
         pystray.MenuItem("Quit", quit_app),

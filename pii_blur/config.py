@@ -9,6 +9,9 @@ from dataclasses import dataclass, field
 class Settings:
     # Detection
     detect_names: bool = True          # the fuzzy name pass (toggleable)
+    blur_faces: bool = False           # also blur detected faces (opt-in; off by
+                                        # default since it's a different, visual
+                                        # kind of guess, not an exact PII match)
     min_confidence: float = 0.60       # drop weaker guesses below this
     # Redaction look
     blur_strength: int = 12

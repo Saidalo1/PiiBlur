@@ -24,6 +24,9 @@ def process_image(img: Image.Image, settings: Settings = DEFAULT, ocr_fn=None):
         names=settings.detect_names,
         min_confidence=settings.min_confidence,
     )
+    if settings.blur_faces:
+        from pii_blur import faces
+        redactions = redactions + faces.detect_faces(img)
     if not redactions:
         return img, []
     out = redact.apply(img, redactions, pad=settings.box_padding,
