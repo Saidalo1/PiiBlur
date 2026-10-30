@@ -16,3 +16,4 @@ __pycache__/
 .vscode/
 Thumbs.db
 desktop.ini
+assets/ner/ner_model_int8.onnx

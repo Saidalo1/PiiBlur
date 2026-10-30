@@ -31,6 +31,13 @@ def test_model_pass_empty_on_no_words():
     assert detect_names_model([], stopwords=patterns.UI_STOPWORDS) == []
 
 
+def test_model_pass_drops_very_short_tokens():
+    # Real Uzbek/Russian given names are never 1-2 letters; this filters out the
+    # short OCR-noise fragments the model occasionally mistags on garbled text.
+    reds = detect_names_model(_row(["Zi"]), stopwords=patterns.UI_STOPWORDS)
+    assert reds == []
+
+
 def test_ui_stoplist_has_core_chrome():
     # The fixed-UI deny-list must cover the known chrome the model misfires on.
     for w in ("rad", "batafsil", "cookie", "voice", "message"):
