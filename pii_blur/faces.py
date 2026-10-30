@@ -7,9 +7,9 @@ accurate as a modern deep model (profile/angled faces, very small/blurry faces c
 be missed), but it has zero extra install weight since OpenCV already ships as a
 RapidOCR dependency, and it never phones out.
 
-Off by default — face blurring is a different kind of guess than text PII (no
-exact match, just "this looks like a face"), so it's an opt-in toggle in Settings/
-the tray menu rather than silently changing what gets blurred.
+On by default, toggleable in Settings/the tray menu — a face is a different kind
+of guess than text PII (no exact match, just "this looks like a face"), so a
+miss on a very small/dark photo is possible; see the module docstring above.
 """
 from __future__ import annotations
 

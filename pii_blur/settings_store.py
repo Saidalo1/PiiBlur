@@ -11,7 +11,8 @@ _DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "PiiBlur
 _PATH = os.path.join(_DIR, "config.json")
 
 # Only these fields are user-editable / persisted (the rest stay at defaults).
-_KEYS = ("detect_names", "min_confidence", "blur_strength", "auto", "poll_seconds")
+_KEYS = ("detect_names", "blur_faces", "min_confidence", "blur_strength", "auto",
+         "poll_seconds")
 
 
 def load() -> Settings:
