@@ -243,6 +243,20 @@ COMMON_GIVEN_NAMES_ALL = COMMON_GIVEN_NAMES | _load_uz_names()
 # UI/form text PiiBlur actually sees, so this is the safer default.
 AMBIGUOUS_GIVEN_NAMES = {
     "mamlakat", "viloyat", "manzil", "maktub", "miqdor", "rahbar",
+    # Found by systematically cross-referencing our full ~11.6k name list against
+    # a real Uzbek dictionary (uz-hunspell, github.com/uzbek-net/uz-hunspell) —
+    # 2115 overlaps total, but MOST are genuine rare names that a spellcheck
+    # dictionary also lists (expected, not a problem). This subset is different:
+    # numbers, days of the week, and extremely common adjectives/nouns that
+    # appear constantly in ordinary text/forms — a far higher false-positive
+    # risk than an archaic name that's merely also dictionary-listed.
+    "bir", "besh", "olti", "yetti", "sakkiz", "toqqiz", "sakson", "yetmish",
+    "chor", "qirq",
+    "juma", "shanba", "payshanba", "seshanba", "dushanba",
+    "yaxshi", "yomon", "yaqin", "uzoq", "uzun", "katta", "kichik", "yana",
+    "hozir", "darrov", "baland",
+    "ota", "non", "dam", "haq", "kuch", "tosh", "gul",
+    "izoh", "maqsad", "natija", "vazifa",
 }
 
 

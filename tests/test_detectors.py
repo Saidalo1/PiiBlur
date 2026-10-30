@@ -196,3 +196,22 @@ def test_ordinary_word_ending_in_ov_not_rescued_by_unrelated_capitalized_word():
     # word, or ordinary tech vocabulary next to Uzbek grammar gets flagged.
     reds = detect(_row(["bo'lmasa", "—", "Standard", "S0", "haqiqiy"]), min_confidence=0.60)
     assert not any(r.category == "name" for r in reds)
+
+
+def test_numbers_and_weekdays_in_gazetteer_not_flagged_bare():
+    # Found via a systematic scan (cross-referencing the full ~11.6k name list
+    # against a real Uzbek dictionary, uz-hunspell): numbers and weekday names
+    # are ALSO listed as rare given names in the gazetteer, but they appear
+    # constantly as ordinary vocabulary ("Besh ming so'm" = "5000 so'm",
+    # "Juma kuni" = "on Friday") -- bare, they must not be flagged.
+    for word in ("Besh", "Yetti", "Juma", "Shanba", "Hozir", "Katta"):
+        reds = detect(_row([word]), min_confidence=0.60)
+        assert not any(r.category == "name" for r in reds), word
+
+
+def test_compound_name_containing_ambiguous_root_still_works():
+    # "Gul" is ambiguous (also "flower"), but a compound like "Gulnora" is an
+    # unambiguous real name and must be unaffected by the ambiguous-word guard
+    # (the guard only applies to the BARE word, not names containing it).
+    reds = detect(_row(["Gulnora", "Karimova"]), min_confidence=0.60)
+    assert any(r.category == "name" and "Gulnora" in r.text for r in reds)
