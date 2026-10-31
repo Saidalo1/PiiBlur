@@ -13,6 +13,17 @@ rapidocr-onnxruntime>=1.3        # default neural OCR (CPU, ~15MB models)
 winocr>=0.0.13 ; sys_platform == "win32"   # optional faster path (may need winrt)
 # pytesseract>=0.3.10            # optional; also install the Tesseract .exe
 
+# Cyrillic-script OCR for PHOTOGRAPHED documents (not screenshots) — see
+# pii_blur.ocr._cyrillic_scan_pass. winocr's "ru" language pack already reads
+# Cyrillic for normal screenshots; this is specifically for the degraded-photo
+# path (pii_blur.scan_preprocess), where winocr/rapidocr-onnxruntime's default
+# Chinese+English model only approximate Cyrillic glyphs with similar-looking
+# Latin letters. The newer `rapidocr` package (successor to
+# rapidocr-onnxruntime) auto-downloads a dedicated, Apache-2.0-licensed
+# Cyrillic PP-OCRv5 model (~8MB, downloaded once on first use, not bundled in
+# the installer) that reads Cyrillic natively instead of guessing shapes.
+rapidocr>=3.0
+
 # Neural name model (hybrid): a 64MB int8 ONNX BERT, run with onnxruntime (already
 # pulled in by rapidocr) + the lightweight tokenizers lib (Rust-backed, no heavy
 # transformers runtime needed).

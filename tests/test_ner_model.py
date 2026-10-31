@@ -81,6 +81,16 @@ def test_rescue_bridges_a_model_only_name_to_an_adjacent_surname():
     assert any("абламидов" in r.text for r in rescued)
 
 
+def test_education_form_words_not_flagged_as_names():
+    # Real false positive: a university group/schedule table has a "Ta'lim
+    # shakli" (education form) column whose only possible values are these
+    # words -- never real Uzbek person names, but the model mistagged them when
+    # sitting next to OCR noise from a narrow, close-cropped screenshot.
+    for word in ("Kechki", "Kunduzgi", "Sirtqi", "Bakalavr"):
+        reds = detect_names_model(_row([word]), stopwords=patterns.UI_STOPWORDS)
+        assert reds == [], word
+
+
 def test_rescue_does_not_fire_without_a_real_confirmed_name_nearby():
     # No existing name redaction at all -> nothing to bridge to, even if a
     # lowercase surname-suffix word is present.

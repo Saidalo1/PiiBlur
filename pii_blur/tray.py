@@ -40,21 +40,36 @@ def _resource(name: str) -> str:
     return os.path.join(base, name)
 
 
-def _icon_image(active: bool):
-    """The real app icon (greyed when paused); falls back to a drawn shield."""
+def _icon_image(state: str = "active"):
+    """The real app icon, tinted per state ("active" / "paused" / "busy");
+    falls back to a drawn shield. "busy" briefly replaces "active" for the
+    real duration of a screenshot being blurred — this IS the user-visible
+    "it started / it's done" signal (the tray icon itself, bottom-right of the
+    screen), chosen over a toast popup: a toast firing on every clipboard
+    paste (potentially dozens of times a day) is exactly the kind of frequent,
+    low-importance confirmation UX guidance says to suppress rather than pop
+    up (see watcher.run's on_busy docstring for the research behind this)."""
     from PIL import Image, ImageDraw
 
     try:
         im = Image.open(_resource("app_icon.png")).convert("RGBA")
-        if active:
+        if state == "active":
             return im
+        if state == "busy":
+            # A warm amber tint — visually distinct from both the full-colour
+            # "active" icon and the desaturated-grey "paused" one, so the three
+            # states read apart from each other at a glance, at tray-icon size.
+            r, g, b, a = im.split()
+            busy = Image.merge("RGBA", (r, g.point(lambda v: int(v * 0.65)),
+                                        b.point(lambda v: int(v * 0.25)), a))
+            return busy
         grey = im.convert("L").point(lambda v: int(v * 0.55)).convert("RGBA")
         grey.putalpha(im.split()[-1])  # keep the shield's transparency
         return grey
     except Exception:
         img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
         d = ImageDraw.Draw(img)
-        color = (38, 150, 90) if active else (120, 120, 120)
+        color = {"active": (38, 150, 90), "busy": (219, 160, 40)}.get(state, (120, 120, 120))
         d.polygon([(32, 6), (56, 16), (56, 36), (32, 58), (8, 36), (8, 16)], fill=color)
         d.text((26, 22), "P", fill="white")
         return img
@@ -93,8 +108,46 @@ def main():
     settings = settings_store.load()  # persisted; defaults to silent auto
     crashguard.guard(autostart.ensure_enabled_once)  # run with Windows (first launch)
     control = Control()
+    busy = threading.Event()
 
-    thread = threading.Thread(target=run, args=(settings,), kwargs={"control": control},
+    def on_busy(is_busy: bool):
+        # Called from the watcher thread; pystray's icon setter is safe to call
+        # off the main thread. Never shows "busy" while paused -- the icon
+        # already communicates "paused" and the watcher skips processing then
+        # anyway, so this can only ever fire while actually active.
+        busy.set() if is_busy else busy.clear()
+        if not control.paused:
+            set_icon()
+            if is_busy:
+                # Flash fires on START (not completion) -- the Doherty-
+                # threshold point is confirming the paste was NOTICED within
+                # the first few hundred ms, not visualizing how long the blur
+                # takes (see status_overlay's own docstring).
+                from pii_blur import onboarding, status_overlay
+                # A plain colour flash with no text doesn't explain ITSELF --
+                # research found that even Apple's own camera/mic dot, after
+                # years of exposure, still confuses people ("what is this?").
+                # One-time toast, the very first flash ever, then never again
+                # -- explains it without becoming the habitual, fatiguing
+                # per-paste popup the earlier research steered away from.
+                if not onboarding.seen("flash_intro"):
+                    try:
+                        icon.notify(
+                            "Если вы видите маленькую янтарную вспышку внизу "
+                            "справа экрана — это PiiBlur: значит, скриншот "
+                            "обработан.",
+                            "PiiBlur",
+                        )
+                    except Exception:
+                        pass
+                    onboarding.mark_seen("flash_intro")
+                status_overlay.flash()
+
+    from pii_blur import status_overlay
+    status_overlay.start()
+
+    thread = threading.Thread(target=run, args=(settings,),
+                              kwargs={"control": control, "on_busy": on_busy},
                               daemon=True)
     thread.start()
 
@@ -111,7 +164,12 @@ def main():
     icon = pystray.Icon("pii_blur")
 
     def set_icon():
-        icon.icon = _icon_image(active=not control.paused)
+        if control.paused:
+            icon.icon = _icon_image("paused")
+        elif busy.is_set():
+            icon.icon = _icon_image("busy")
+        else:
+            icon.icon = _icon_image("active")
 
     def toggle_pause(_icon, item):
         control.paused = not control.paused

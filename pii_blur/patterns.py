@@ -59,7 +59,24 @@ RU_SNILS = re.compile(r"\b\d{3}-\d{3}-\d{3}[\s]?\d{2}\b")
 RU_PASSPORT = re.compile(r"(?<!\d)\d{2}\s\d{2}\s\d{6}(?!\d)")
 
 
+def _separators_consistent(s: str) -> bool:
+    """True if every non-digit character in the match is the SAME one character
+    (or there are none at all). A real formatted identifier (card, PINFL) uses one
+    separator style throughout ("8600 0691 9540 0683" or "8600-0691-9540-0683"),
+    never a mix. Real false positive this guards against: CARD/PINFL's own regex
+    joins a whole table ROW into one digit run (that's by design, for values split
+    across OCR word boxes) with any dash/space allowed between EVERY digit — which
+    let an academic-year range plus an unrelated group code on the same row
+    ("2026-2027 26-165", mixing '-' and ' ') get swept in as one 13-digit run that
+    then coincidentally passed Luhn. Two genuinely separate fields almost never
+    share one separator style; a real formatted number always does."""
+    seps = {c for c in s if not c.isdigit()}
+    return len(seps) <= 1
+
+
 def luhn_ok(s: str) -> bool:
+    if not _separators_consistent(s):
+        return False
     digits = [int(c) for c in s if c.isdigit()]
     if not (13 <= len(digits) <= 19):
         return False
@@ -79,6 +96,8 @@ def ipv4_ok(s: str) -> bool:
 
 
 def pinfl_structural_ok(s: str) -> bool:
+    if not _separators_consistent(s):
+        return False
     d = [c for c in s if c.isdigit()]
     if len(d) != 14 or d[0] not in "123456":
         return False
@@ -136,6 +155,13 @@ NAME_STOPWORDS = {
     "lid", "mijoz", "client", "заявка", "клиент",
     "aka", "opa", "uka", "singil", "amaki", "xola", "ака", "апа", "ука",
     "voice", "message", "sticker", "video", "photo", "file", "saved", "messages",
+    # English weekday abbreviations -- the timestamp Telegram/most chat apps show
+    # for a message sent on an earlier day ("Mon", "Thu"...). Real bug this
+    # caused: one sits on the SAME visual row as a contact's bare name (the name
+    # on the left, the day on the right) and, left uncounted, made that row look
+    # like more than a lone standalone name -- silently dropping the "isolated
+    # name" confidence boost a real contact name needed to clear min_confidence.
+    "mon", "tue", "wed", "thu", "fri", "sat", "sun",
 }
 
 # Fixed UI/chrome strings of chat & CRM apps (and a few common OCR-garbled forms)
@@ -149,6 +175,7 @@ UI_STOPWORDS = {
     "vazifalar", "devices", "sozlamalar", "sorlamalar", "pdf", "telefon", "teiefon",
     "raqam", "yosh", "oquv", "0quv", "ochiq", "sohasi", "sohas", "til", "sertifikati",
     "sertlfikati", "topik", "izoh", "jarayonda", "bakalavr", "magistratura",
+    "kechki", "kunduzgi", "sirtqi", "maxsus",
     "bitirganman", "olmaganman", "oturganman", "diurganman", "javobini", "javoblm",
     "javobi", "avval", "olish", "kotardi", "kotarmadi", "sinfni", "lichkaga",
     "chiqdim", "opam", "father", "sohada", "kasbiy", "mashinasozlik", "tashlab",
@@ -156,6 +183,11 @@ UI_STOPWORDS = {
     "man", "yoq", "koa", "kod", "ang", "eshitmaganakanman", "tushundim", "tushunmima",
     "qoyilindi", "telegramdan", "batafsii", "sticker", "messages", "voice", "message",
     "va", "aka", "ака", "had", "hop", "нор", "ok", "rahmat", "don", "know", "told",
+    # Same English weekday-abbreviation timestamp as NAME_STOPWORDS above -- the
+    # neural model itself mistagged a bare "Thu" sitting alone on a chat row as
+    # a person name (0.66 confidence), a direct false positive on its own, not
+    # just a side effect on a neighbouring real name.
+    "mon", "tue", "wed", "thu", "fri", "sat", "sun",
 }
 
 COMMON_GIVEN_NAMES = {
@@ -288,3 +320,18 @@ CANON_GIVEN_NAMES = {ocr_canon(n) for n in COMMON_GIVEN_NAMES_ALL}
 # anchor on its own either, closing the same loophole the fold-match would
 # otherwise reopen.
 AMBIGUOUS_CANON = {ocr_canon(w) for w in AMBIGUOUS_GIVEN_NAMES}
+
+# Same ambiguous-word problem as AMBIGUOUS_GIVEN_NAMES, but for the SURNAME_SUFFIX
+# anchor instead of the gazetteer: "-ov"/"-uv" isn't only a borrowed Russian/Uzbek
+# surname ending (Karimov) -- it's also a native Uzbek GRAMMATICAL suffix that
+# turns a verb into an ordinary noun (to'la- "to pay" -> to'lov "payment", tanla-
+# "to choose" -> tanlov "contest/selection", sayla- "to elect" -> saylov
+# "election", sina- "to test" -> sinov "exam"). Real false positive this fixes:
+# a "To'lov" (Payment) column header, alone on its own row in a table, was
+# anchoring as a surname and getting blurred -- these are common table/form
+# LABELS, exactly where SURNAME_SUFFIX's own isolated-word path fires. Same
+# fix shape as the given-name list: can't anchor ALONE, but still joins a
+# cluster next to a real anchor (so an actual "Karimov To'lov"-shaped full name,
+# if that combination ever occurred, would still be caught).
+AMBIGUOUS_SURNAME_WORDS = {"to'lov", "tanlov", "saylov", "sinov"}
+AMBIGUOUS_SURNAME_CANON = {ocr_canon(w) for w in AMBIGUOUS_SURNAME_WORDS}

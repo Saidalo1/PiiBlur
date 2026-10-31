@@ -217,6 +217,143 @@ def test_compound_name_containing_ambiguous_root_still_works():
     assert any(r.category == "name" and "Gulnora" in r.text for r in reds)
 
 
+def test_dense_table_rows_do_not_chain_into_one_giant_cluster():
+    # Real bug from a photographed name list: many short table ROWS stacked
+    # tightly (each one already a COMPLETE name on its own) sat close enough
+    # vertically that plain pairwise adjacency let the union-find chain row 1
+    # -> row 2 -> row 3 transitively into ONE cluster spanning many unrelated
+    # people, instead of one redaction per row. Three rows, each a complete
+    # "Surname Given" pair, stacked with a small gap -- must stay THREE
+    # separate redactions, not one.
+    words = (_row(["Alexeev", "Maksim"], y=10, h=20)
+            + _row(["Antonov", "Mixail"], y=32, h=20)
+            + _row(["Arestov", "Ivan"], y=54, h=20))
+    reds = detect(words, min_confidence=0.0)
+    names = [r for r in reds if r.category == "name"]
+    assert len(names) == 3
+    assert all(r.box[3] < 25 for r in names)  # one row's height, not three
+
+
+def test_mismatched_box_heights_across_rows_still_stay_separate():
+    # Real bug: merging several OCR passes (native scale + 2x/3x upscale + a
+    # different engine for a photographed document) can report slightly
+    # different box HEIGHTS for the same physical row. When one source reports
+    # a taller-than-usual box, two adjacent dense-table rows' boxes can end up
+    # vertically OVERLAPPING -- which the local pairwise geometry check then
+    # reads as "same line" (not "stacked"), completely bypassing a guard that
+    # only watches the stacked case. The union-find gate must instead trust
+    # group_lines()'s own (separately, more carefully computed) line
+    # membership for ANY cross-line pair, not just ones the local pairwise
+    # check happens to classify as "stacked".
+    words = [
+        Word("Alexeev", (10, 10, 40, 17)),   # row 1, normal height
+        Word("Maksim", (58, 10, 40, 17)),
+        Word("Antonov", (10, 24, 40, 25)),   # row 2, a TALLER box (another OCR
+        Word("Mixail", (58, 24, 40, 25)),    # source's reading) overlaps row 1
+    ]
+    reds = detect(words, min_confidence=0.0)
+    names = [r for r in reds if r.category == "name"]
+    assert len(names) == 2
+
+
+def test_ukrainian_ko_surname_row_blocks_chaining_without_matching_suffix_regex():
+    # Real bug: a Ukrainian surname ending in "-ько"/"-ко" (Онисько,
+    # Шевченко...) isn't covered by SURNAME_SUFFIX (built around Russian
+    # -ов/-ев/-ский endings), so that row's own surname never registered as a
+    # strict anchor -- making detect_names think the row was an INCOMPLETE
+    # wrapped name still "waiting" for its surname, and wrongly letting it
+    # absorb the next table row. A row with its own close-together "Surname
+    # Given Patronymic" must count as complete even without a suffix match.
+    words = (_row(["Onisko", "Sergey", "Vasilyevich"], y=10, h=20)
+            + _row(["Orlovsky", "Andrey", "Anatolyevich"], y=32, h=20))
+    reds = detect(words, min_confidence=0.0)
+    names = [r for r in reds if r.category == "name"]
+    assert len(names) == 2
+
+
+def test_far_off_capitalized_label_does_not_fake_row_completeness():
+    # The adjacency requirement the above fix needs: TWO plausible capitalized
+    # words merely sharing an OCR line, but far apart (a given name on the
+    # left, an unrelated UI label on the right -- e.g. "Akram ... Jarayonda"),
+    # must NOT count as "this row is already complete" -- only a real cluster
+    # of words sitting close together does. A genuinely incomplete given name
+    # must still be free to wrap onto the next line's surname.
+    words = [
+        Word("Akram", (10, 10, 50, 20)),
+        Word("Jarayonda", (300, 10, 90, 20)),   # far right, unrelated label
+        Word("mo'monov", (10, 32, 70, 20)),     # wraps from the line above
+    ]
+    reds = detect(words, min_confidence=0.0)
+    names = [r for r in reds if r.category == "name"]
+    assert len(names) == 1
+    assert "Akram" in names[0].text and "mo'monov" in names[0].text
+
+
+def test_two_line_wrapped_name_still_merges_when_upper_line_is_incomplete():
+    # The case the row-chaining guard must NOT break: a name genuinely wrapped
+    # across two lines in a sparse contact card -- the upper line ("Akram") has
+    # no surname of its own yet, so it's still allowed to absorb the line below.
+    words = [Word("Akram", (10, 10, 50, 20)), Word("mo'monov", (10, 32, 60, 20))]
+    reds = detect(words, min_confidence=0.0)
+    names = [r for r in reds if r.category == "name"]
+    assert len(names) == 1
+    assert "Akram" in names[0].text and "mo'monov" in names[0].text
+
+
+def test_tolov_column_header_not_flagged_as_surname():
+    # Real false positive: a "To'lov" (Payment) table-column header, alone on
+    # its own row, anchored as a surname purely because it ends in "-ov" --
+    # which is ALSO the native Uzbek noun-forming suffix (to'la- "pay" ->
+    # to'lov "payment"), not just the borrowed Russian/Uzbek surname ending.
+    reds = detect(_row(["To'lov"]), min_confidence=0.60)
+    assert not any(r.category == "name" for r in reds)
+    # Still joins a cluster next to a real anchor, same as the other
+    # ambiguous-word lists (so no real recall is lost).
+    reds2 = detect(_row(["Karimov", "To'lov"]), min_confidence=0.60)
+    assert any(r.category == "name" for r in reds2)
+
+
+def test_short_word_fuzzy_canon_match_requires_five_chars():
+    # Real false positive: the SAME "To'lov" header, truncated by a narrow
+    # screenshot crop, OCR'd as "Toil" -- whose OCR-confusable-folded form
+    # ("toii", i/l/1 folded together) collided with the gazetteer's own rare
+    # but real name "Toli". A 4-char word has few possible canon forms, so
+    # this kind of accidental collision is far more likely for short words;
+    # the fuzzy (confusable-folded) gazetteer match now requires >=5 chars.
+    # An exact match is NOT affected -- the real "Toli" read cleanly must
+    # still be caught.
+    reds = detect(_row(["Toil"]), min_confidence=0.60)
+    assert not any(r.category == "name" for r in reds)
+    reds2 = detect(_row(["Toli"]), min_confidence=0.60)
+    assert any(r.category == "name" for r in reds2)
+
+
+def test_undecodable_dual_language_artifact_does_not_block_name_isolation():
+    # Real bug from a user's full chat-list screenshot: the Russian/Cyrillic OCR
+    # pass tried to read the English weekday-abbreviation timestamp ("Mon") that
+    # sits on the SAME row as a bare contact name and failed, returning the
+    # Unicode replacement character (U+FFFD) at that exact box -- a genuine
+    # decode failure, not a confusable look-alike, so the existing confusable
+    # dedup didn't recognize it as a duplicate of "Mon". Left in, it was an
+    # extra "real" word on that row, pushing the lone contact name over the
+    # word-count cap for the "isolated single name" confidence boost -- so a
+    # real name ("Doston") silently dropped from 0.65 to 0.50, below
+    # min_confidence (0.60), and was missed even on a normal (not close-cropped)
+    # screenshot.
+    words = _row(["Doston"]) + [Word("Mon", (300, 10, 30, 20)),
+                                Word("���", (300, 10, 30, 20))]
+    reds = detect(words, min_confidence=0.60)
+    assert any(r.category == "name" and "Doston" in r.text for r in reds)
+
+
+def test_weekday_abbreviation_timestamp_not_flagged_as_name():
+    # The same real screenshot also had the model itself mistag a bare "Thu"
+    # timestamp (sitting alone on its own row, visually identical to a bare
+    # contact name) as a person name on its own.
+    reds = detect(_row(["Thu"]), min_confidence=0.60)
+    assert not any(r.category == "name" for r in reds)
+
+
 def test_garbled_duplicate_does_not_survive_dedup_over_the_clean_reading():
     # Real bug: dual-language OCR reading the same Cyrillic word produced "A6pop"
     # (mixed letters+digits, garbled) from one pass and "Аброр" (clean Cyrillic)
@@ -227,6 +364,28 @@ def test_garbled_duplicate_does_not_survive_dedup_over_the_clean_reading():
     clean = Word("Аброр", (10, 10, 50, 17))
     out = _dedupe_words([garbled, clean])
     assert len(out) == 1 and out[0].text == "Аброр"
+
+
+def test_date_range_and_group_code_not_joined_into_a_fake_card():
+    # Real false positive from a user's group/schedule table: "2026-2027" (an
+    # academic-year range) and "26-165" (an unrelated group code) sit on the SAME
+    # table row, so the card/PINFL regex -- which deliberately allows a space/dash
+    # between EVERY digit, so a value split across OCR word boxes still matches --
+    # swallowed both into one digit run that coincidentally passed Luhn. Two
+    # genuinely separate fields almost never share one consistent separator
+    # character the way a real formatted card/PINFL does ('-' AND ' ' both appear
+    # here); _separators_consistent() rejects that mix.
+    reds = detect(_row(["2026-2027", "26-165"]), min_confidence=0.0)
+    assert not any(r.category in ("card", "pinfl") for r in reds)
+
+
+def test_consistently_formatted_card_still_matches():
+    # The separator-consistency guard must not weaken real detection: a normal
+    # card shown with one consistent separator style still has to match.
+    valid = _luhn_complete("860006919540683")
+    spaced = f"{valid[0:4]} {valid[4:8]} {valid[8:12]} {valid[12:16]}"
+    reds = detect(_row([spaced]), min_confidence=0.0)
+    assert any(r.category == "card" for r in reds)
 
 
 def test_preprocess_words_is_idempotent():

@@ -30,7 +30,13 @@ class Control:
     stop: threading.Event = field(default_factory=threading.Event)
 
 
-def run(settings: Settings = DEFAULT, on_review=None, control: Control | None = None):
+def run(settings: Settings = DEFAULT, on_review=None, control: Control | None = None,
+        on_busy=None):
+    """`on_busy`, if given, is called with True right before processing a newly
+    pasted screenshot and False right after (success, no-PII, or error alike) --
+    lets the tray swap its icon to a "working" state for the real duration of
+    the blur, then back. Best-effort: never lets a UI-callback failure break
+    the watch loop itself."""
     from pii_blur import clipboard_win as cb
 
     last_seq = cb.sequence_number()
@@ -67,7 +73,19 @@ def run(settings: Settings = DEFAULT, on_review=None, control: Control | None = 
             if img is None:
                 continue
 
-            redacted, redactions = process_image(img, settings)
+            if on_busy is not None:
+                try:
+                    on_busy(True)
+                except Exception:
+                    logger.debug("on_busy(True) callback failed", exc_info=True)
+            try:
+                redacted, redactions = process_image(img, settings)
+            finally:
+                if on_busy is not None:
+                    try:
+                        on_busy(False)
+                    except Exception:
+                        logger.debug("on_busy(False) callback failed", exc_info=True)
             if not redactions:
                 continue
 

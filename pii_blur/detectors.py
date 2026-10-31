@@ -125,13 +125,12 @@ def _is_avatar_initials(t: str) -> bool:
     return 2 <= len(t) <= 3 and t.isupper() and t.isalpha()
 
 
-def _name_adjacent(a: tuple, b: tuple) -> bool:
-    """True if two word boxes are close enough to belong to ONE name — either
-    neighbours on the same visual line (small horizontal gap) or stacked vertically
-    (a name wrapped onto the next line, e.g. 'Akram' over "mo'monov").
-
-    The gap caps are what stop a name box from stretching across the whole card to
-    grab a far-away status badge ('Rad etildi') or label ('Baxor')."""
+def _adjacency_kind(a: tuple, b: tuple) -> str | None:
+    """'line' if two boxes are same-line neighbours (small horizontal gap),
+    'stack' if vertically stacked (small vertical gap — a name wrapped onto the
+    next line, e.g. 'Akram' over "mo'monov"), else None. The gap caps are what
+    stop a name box from stretching across the whole card to grab a far-away
+    status badge ('Rad etildi') or label ('Baxor')."""
     ax, ay, aw, ah = a
     bx, by, bw, bh = b
     ax1, ay1, bx1, by1 = ax + aw, ay + ah, bx + bw, by + bh
@@ -140,11 +139,20 @@ def _name_adjacent(a: tuple, b: tuple) -> bool:
     x_overlap = ax < bx1 and bx < ax1
     if v_overlap:                                 # same line → cap the horizontal gap
         hgap = max(ax - bx1, bx - ax1, 0)
-        return hgap <= 2.0 * h
+        return "line" if hgap <= 2.0 * h else None
     if x_overlap:                                 # stacked → cap the vertical gap
         vgap = max(ay - by1, by - ay1, 0)
-        return vgap <= 0.9 * h
-    return False
+        return "stack" if vgap <= 0.9 * h else None
+    return None
+
+
+def _name_adjacent(a: tuple, b: tuple) -> bool:
+    """True if two word boxes are close enough to belong to ONE name — either
+    on the same line or stacked vertically. See _adjacency_kind for the shape;
+    this is the plain yes/no version used where the distinction doesn't matter
+    (the lowercase-surname and cross-source rescues, which only ever fire
+    between exactly two words, never chain transitively)."""
+    return _adjacency_kind(a, b) is not None
 
 
 def detect_names(words: list[Word], gazetteer: set | None = None) -> list[Redaction]:
@@ -219,10 +227,23 @@ def detect_names(words: list[Word], gazetteer: set | None = None) -> list[Redact
             continue
         is_ambiguous = (tokens[i].lower() in patterns.AMBIGUOUS_GIVEN_NAMES
                         or patterns.ocr_canon(tokens[i]) in patterns.AMBIGUOUS_CANON)
-        if (particle[i] or fused[i] or (surname[i] and _cap(i))
+        is_ambiguous_surname = (tokens[i].lower() in patterns.AMBIGUOUS_SURNAME_WORDS
+                                or patterns.ocr_canon(tokens[i]) in patterns.AMBIGUOUS_SURNAME_CANON)
+        # The OCR-canon fuzzy match (folds i/l/1/o/0 confusables) requires >=5
+        # chars -- a real bug from a truncated table column: "Toil" (OCR's
+        # misread of a "To'lov" header cut off at the image edge) canon-folds
+        # to "toii", which collides with the gazetteer's real but rare name
+        # "Toli". A short word has far fewer possible canon forms, so this kind
+        # of accidental collision is much more likely there; an exact (non-
+        # fuzzy) match is unaffected, so a real short name read cleanly is
+        # still caught -- only a short word that needed the FUZZY rescue loses
+        # it, which is the right trade for avoiding short-word collisions.
+        canon_hit = (len(tokens[i]) >= 5
+                    and patterns.ocr_canon(tokens[i]) in patterns.CANON_GIVEN_NAMES)
+        if (particle[i] or fused[i] or (surname[i] and _cap(i) and not is_ambiguous_surname)
                 or (_cap(i) and not is_ambiguous
                     and (_gaz_exact_hit(tokens[i].lower()) or _gaz_compound_hit(tokens[i].lower())
-                         or patterns.ocr_canon(tokens[i]) in patterns.CANON_GIVEN_NAMES))):
+                         or canon_hit))):
             anchor[i] = True
 
     # Rescue a LOWERCASE surname only when a REAL given name sits right next to it
@@ -250,6 +271,48 @@ def detect_names(words: list[Word], gazetteer: set | None = None) -> list[Redact
                 cand[i] = True
                 break
 
+    # Physical text lines, computed up front so the clustering step below can
+    # use them as a hard boundary. Also: how many MEANING-BEARING words share a
+    # word's line — used later to tell a standalone contact name ("Isroilov",
+    # alone on its own UI row) from an ordinary word that happens to end in
+    # -ов/-ev inside a sentence ("...CSV-импорт контактов..."). A genitive-
+    # plural noun is always embedded in a longer phrase; a name shown alone in
+    # a chat list or contact card is not. Stopwords/honorifics ("aka",
+    # "Instagram"...) don't count — they regularly sit next to a bare name
+    # (e.g. dual-language OCR reading "aka" AND "ака" on the same row) without
+    # making it a sentence.
+    line_size = {}
+    line_id: dict[int, int] = {}
+    line_has_anchor: dict[int, bool] = {}
+    for lid, ln in enumerate(group_lines(words)):
+        line_word_idx = [words.index(w) for w in ln]
+        usable_count = sum(1 for i in line_word_idx if _usable(i))
+        # A line counts as "complete" either via a strict anchor pattern, OR by
+        # already having a pair of ADJACENT plausible capitalized words of its
+        # own -- real gap found via a Ukrainian name list: a surname ending in
+        # "-ко"/"-ько" (Онисько, Шевченко...) isn't covered by SURNAME_SUFFIX
+        # (built around Russian -ов/-ев/-ский endings), so that row's own
+        # surname never registered as an anchor, making the row look
+        # "incomplete" and letting it wrongly absorb the NEXT row. A row with
+        # "Surname Given Patronymic" (its words sitting close together) is
+        # complete regardless of which specific suffix we do or don't
+        # recognize. Adjacency is required, not just "2+ plausible words
+        # anywhere on the line": a genuinely incomplete wrapped given name
+        # ("Akram" alone, awaiting its surname on the next line) can still
+        # share its OCR line with an unrelated, far-off capitalized UI label
+        # ("Jarayonda") -- two plausible words that are nowhere near each
+        # other must not count as a complete name.
+        plausible_idx = [i for i in line_word_idx if _plausible(i)]
+        has_own_anchor = (
+            any(particle[i] or fused[i] or (surname[i] and _cap(i)) for i in line_word_idx)
+            or any(_name_adjacent(words[i].box, words[j].box)
+                  for a, i in enumerate(plausible_idx) for j in plausible_idx[a + 1:])
+        )
+        for i in line_word_idx:
+            line_size[i] = usable_count
+            line_id[i] = lid
+            line_has_anchor[lid] = has_own_anchor
+
     idx = [i for i in range(n) if cand[i]]
     parent = {i: i for i in idx}
 
@@ -259,29 +322,45 @@ def detect_names(words: list[Word], gazetteer: set | None = None) -> list[Redact
             x = parent[x]
         return x
 
+    # A dense table (many short rows stacked tightly — a printed list, not a
+    # sparse chat card) can put consecutive ROWS within the same small vertical
+    # gap a genuinely wrapped name uses. Plain pairwise adjacency doesn't see
+    # the difference and the union-find chains row 1 -> row 2 -> row 3 -> ...
+    # transitively into ONE giant cluster spanning many unrelated people — a
+    # real bug from a photographed name list. The fix (matching how engine-
+    # grade OCR/layout pipelines bound this): a vertical ("stacked") link is
+    # only allowed to cross into the line ABOVE when that upper line doesn't
+    # already have its own complete anchor — i.e. it's a genuinely incomplete
+    # fragment still waiting for its wrap (the real 2-line contact-card case:
+    # "Akram" alone has no surname of its own yet). A line that's ALREADY a
+    # complete name on its own (as every row in a dense table is) never
+    # absorbs the next line, so the chain stops at each row's own boundary.
     for a in range(len(idx)):
         for b in range(a + 1, len(idx)):
             i, j = idx[a], idx[b]
-            if _name_adjacent(words[i].box, words[j].box):
-                parent[_find(i)] = _find(j)
+            if _adjacency_kind(words[i].box, words[j].box) is None:
+                continue
+            # Gate on group_lines()'s OWN line membership, not just this pair's
+            # local geometry: merging several OCR passes (native + upscaled +
+            # a different engine) at slightly different box heights can make
+            # two words from DIFFERENT physical rows pairwise LOOK like same-
+            # line neighbours (their boxes happen to vertically overlap once
+            # one source reports a taller box than usual) even though
+            # group_lines's own, more careful pass correctly kept the rows
+            # separate. Real bug this fixes: with a 3rd OCR source merged in,
+            # exactly this height mismatch made two adjacent dense-table rows
+            # geometrically read as "same line", bypassing the stack-only
+            # guard above entirely. Any cross-line join -- whichever way the
+            # pairwise check classified it -- gets the same anchor guard.
+            if line_id.get(i) != line_id.get(j):
+                upper = i if words[i].box[1] < words[j].box[1] else j
+                if line_has_anchor.get(line_id.get(upper)):
+                    continue
+            parent[_find(i)] = _find(j)
 
     clusters: dict[int, list[int]] = {}
     for i in idx:
         clusters.setdefault(_find(i), []).append(i)
-
-    # How many MEANING-BEARING words share a word's physical text line — used
-    # below to tell a standalone contact name ("Isroilov", alone on its own UI
-    # row) from an ordinary word that happens to end in -ов/-ev inside a sentence
-    # ("...CSV-импорт контактов..."). A genitive-plural noun is always embedded in
-    # a longer phrase; a name shown alone in a chat list or contact card is not.
-    # Stopwords/honorifics ("aka", "Instagram"...) don't count — they regularly
-    # sit next to a bare name (e.g. dual-language OCR reading "aka" AND "ака" on
-    # the same row) without making it a sentence.
-    line_size = {}
-    for ln in group_lines(words):
-        usable_count = sum(1 for w in ln if _usable(words.index(w)))
-        for w in ln:
-            line_size[words.index(w)] = usable_count
 
     def _is_ambiguous(i: int) -> bool:
         return (tokens[i].lower() in patterns.AMBIGUOUS_GIVEN_NAMES
@@ -289,7 +368,8 @@ def detect_names(words: list[Word], gazetteer: set | None = None) -> list[Redact
 
     gaz_hit = [bool(_cap(i) and not _is_ambiguous(i)
                     and (_gaz_exact_hit(tokens[i].lower()) or _gaz_compound_hit(tokens[i].lower())
-                         or patterns.ocr_canon(tokens[i]) in patterns.CANON_GIVEN_NAMES))
+                         or (len(tokens[i]) >= 5
+                             and patterns.ocr_canon(tokens[i]) in patterns.CANON_GIVEN_NAMES)))
                for i in range(n)]
 
     out: list[Redaction] = []
@@ -428,16 +508,33 @@ def _dedupe_words(words: list[Word]) -> list[Word]:
     return out
 
 
+def _is_undecodable(t: str) -> bool:
+    """True if a word is ENTIRELY the Unicode replacement character (U+FFFD) —
+    one OCR language pass genuinely failing to decode a glyph it can't read
+    (e.g. trying to read English "Mon" with the Russian/Cyrillic pass), not a
+    confusable look-alike (that's a different, already-handled case). Pure
+    noise, never meaningful content: real bug this fixes -- such a token at the
+    SAME box as a real word (a dual-language OCR artifact, like "Mon"'s own
+    overlap) doesn't text-match it for _dedupe_words (it isn't a confusable
+    substitution, just garbage), so it survived as an extra, separate "real"
+    word next to a name and was enough by itself to push a lone contact name's
+    line over the "isolated single name" word-count cap, silently losing the
+    confidence boost that name needed to clear min_confidence."""
+    return bool(t) and all(c == "�" for c in t)
+
+
 def preprocess_words(words: list[Word]) -> list[Word]:
-    """Split multi-token OCR 'words' and dedupe cross-language duplicates. Public
-    so the pipeline can run this ONCE and feed the same clean word list to every
-    detector (rules, the neural model, the cross-source surname rescue) — doing
-    it only inside detect() left the model seeing raw, un-deduped words, which is
-    what let a duplicate-but-garbled reading ("A6pop" next to the correctly-read
-    "Аброр") survive as its own false-positive redaction. Idempotent: safe to
-    call again on an already-preprocessed list (e.g. detect() does, for any
-    caller that hands it raw words directly)."""
-    return _dedupe_words(explode_multiword(words))
+    """Split multi-token OCR 'words', drop pure-garbage (undecodable) tokens, and
+    dedupe cross-language duplicates. Public so the pipeline can run this ONCE
+    and feed the same clean word list to every detector (rules, the neural
+    model, the cross-source surname rescue) — doing it only inside detect() left
+    the model seeing raw, un-deduped words, which is what let a duplicate-but-
+    garbled reading ("A6pop" next to the correctly-read "Аброр") survive as its
+    own false-positive redaction. Idempotent: safe to call again on an
+    already-preprocessed list (e.g. detect() does, for any caller that hands it
+    raw words directly)."""
+    exploded = [w for w in explode_multiword(words) if not _is_undecodable(w.text)]
+    return _dedupe_words(exploded)
 
 
 def detect(words: list[Word], *, names: bool = True,
