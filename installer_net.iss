@@ -206,6 +206,15 @@ begin
     + '-o "' + DestFile + '" "' + Url + '"';
   LastBytes := -1;
   StallCount := 0;
+  // Each burst below only reports progress AFTER curl returns (up to 15s
+  // later) -- without this, the page sits completely blank (no text, no bar)
+  // for that whole first window while the connection to GitHub is still
+  // being established. Show something immediately instead of waiting for
+  // the first burst to finish.
+  GotBytes := CurrentFileSize(DestFile);
+  if TotalBytes > 0 then
+    DownloadPage.SetProgress(GotBytes, TotalBytes);
+  DownloadPage.SetText('Connecting…', 'Starting the download — this can take a few seconds.');
   while True do
   begin
     // SW_HIDE: no visible console window — a flashing terminal during setup
