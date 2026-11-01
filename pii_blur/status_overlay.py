@@ -22,17 +22,23 @@ position (hugging the work-area edge, where nothing is normally clicked) the
 extra WS_EX_LAYERED/WS_EX_TRANSPARENT plumbing a true click-through window
 needs isn't worth the added complexity or the known PyInstaller-packaging
 click-through pitfall it would add.
+
+IMPORTANT: `attach(root)` builds this as a Toplevel of an EXISTING Tk root —
+it does NOT create its own root or run its own mainloop/thread. Tcl/Tk is not
+safe with two independent interpreters running concurrently in separate OS
+threads (confirmed directly: running this overlay's own old `tk.Tk()` loop
+alongside gui.py's ttkbootstrap `tb.Window()` loop in a second thread made
+ttkbootstrap's style engine fail with "Layout Round.Toggle not found" —
+intermittent Tcl-interpreter corruption from two threads touching Tk at once,
+not a bug in either piece on its own). The whole app now has exactly ONE Tk
+root and ONE UI thread, owned by gui.py; this module just adds a Toplevel to
+it and is driven by that same thread's event loop via `root.after()`.
 """
 from __future__ import annotations
 
-import logging
 import queue
-import threading
-
-logger = logging.getLogger(__name__)
 
 _QUEUE: "queue.Queue | None" = None
-_THREAD: threading.Thread | None = None
 
 _WIDTH = 160
 _HEIGHT = 5
@@ -53,64 +59,59 @@ def _work_area() -> tuple[int, int]:
     return rect.right, rect.bottom
 
 
-def _run(q: "queue.Queue") -> None:
-    import tkinter as tk
-
-    root = tk.Tk()
-    root.withdraw()
-    root.overrideredirect(True)
-    root.attributes("-topmost", True)
+def attach(root) -> None:
+    """Build the flash window as a Toplevel of `root` (gui.py's one shared Tk
+    root) and start polling for flash() requests via that root's OWN event
+    loop (`root.after`) — no separate thread, no separate mainloop. Call once,
+    from the same thread that will call root.mainloop(). Best-effort: any
+    failure (no display, tkinter unavailable) is swallowed silently — the
+    tray icon's own busy-tint still works without this, it's a supplementary
+    signal, not the only one."""
+    global _QUEUE
     try:
-        root.attributes("-toolwindow", True)  # keep it off the taskbar/alt-tab
-    except Exception:
-        pass
+        import tkinter as tk
 
-    right, bottom = _work_area()
-    x, y = right - _WIDTH - _MARGIN, bottom - _HEIGHT - _MARGIN
-    root.geometry(f"{_WIDTH}x{_HEIGHT}+{x}+{y}")
-    root.configure(bg=_COLOR)
-
-    hide_job = [None]
-
-    def show():
-        if hide_job[0] is not None:
-            root.after_cancel(hide_job[0])
-        root.deiconify()
-        hide_job[0] = root.after(_FLASH_MS, root.withdraw)
-
-    def poll():
+        win = tk.Toplevel(root)
+        win.withdraw()
+        win.overrideredirect(True)
+        win.attributes("-topmost", True)
         try:
-            while True:
-                q.get_nowait()
-                show()
-        except queue.Empty:
+            win.attributes("-toolwindow", True)  # keep it off the taskbar/alt-tab
+        except Exception:
             pass
-        root.after(50, poll)
 
-    root.after(50, poll)
-    root.mainloop()
+        right, bottom = _work_area()
+        x, y = right - _WIDTH - _MARGIN, bottom - _HEIGHT - _MARGIN
+        win.geometry(f"{_WIDTH}x{_HEIGHT}+{x}+{y}")
+        win.configure(bg=_COLOR)
 
+        hide_job = [None]
 
-def start() -> None:
-    """Start the overlay's own dedicated thread once (idempotent — a no-op on
-    later calls). Best-effort: any failure (no display, tkinter unavailable)
-    is swallowed silently — the tray icon's own busy-tint still works
-    without this, it's a supplementary signal, not the only one."""
-    global _QUEUE, _THREAD
-    if _THREAD is not None:
-        return
-    try:
+        def show():
+            if hide_job[0] is not None:
+                win.after_cancel(hide_job[0])
+            win.deiconify()
+            hide_job[0] = win.after(_FLASH_MS, win.withdraw)
+
         q: "queue.Queue" = queue.Queue()
-        t = threading.Thread(target=_run, args=(q,), name="status-overlay", daemon=True)
-        t.start()
-        _QUEUE, _THREAD = q, t
+
+        def poll():
+            try:
+                while True:
+                    q.get_nowait()
+                    show()
+            except queue.Empty:
+                pass
+            root.after(50, poll)
+
+        root.after(50, poll)
+        _QUEUE = q
     except Exception:
-        logger.debug("status overlay failed to start", exc_info=True)
-        _QUEUE, _THREAD = None, None
+        _QUEUE = None
 
 
 def flash() -> None:
-    """Trigger the flash from ANY thread. No-op if start() wasn't called or
+    """Trigger the flash from ANY thread. No-op if attach() wasn't called or
     failed to come up."""
     if _QUEUE is not None:
         try:

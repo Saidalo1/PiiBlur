@@ -17,18 +17,11 @@ from __future__ import annotations
 import logging
 import threading
 
+from pii_blur import i18n
 from pii_blur.config import Settings
 from pii_blur.watcher import Control, run
 
 logger = logging.getLogger(__name__)
-
-
-def _autostart_state() -> bool:
-    try:
-        from pii_blur import autostart
-        return autostart.is_enabled()
-    except Exception:
-        return False
 
 
 def _resource(name: str) -> str:
@@ -132,19 +125,21 @@ def main():
                 # per-paste popup the earlier research steered away from.
                 if not onboarding.seen("flash_intro"):
                     try:
-                        icon.notify(
-                            "Если вы видите маленькую янтарную вспышку внизу "
-                            "справа экрана — это PiiBlur: значит, скриншот "
-                            "обработан.",
-                            "PiiBlur",
-                        )
+                        icon.notify(i18n.t("toast_flash_intro", settings.language), "PiiBlur")
                     except Exception:
                         pass
                     onboarding.mark_seen("flash_intro")
                 status_overlay.flash()
 
-    from pii_blur import status_overlay
-    status_overlay.start()
+    from pii_blur import gui
+    # gui.start() also attaches the status-overlay flash to the SAME Tk root
+    # it builds (see status_overlay.py's module docstring for why they can't
+    # each run their own independent Tk interpreter/thread). `on_pause_change`
+    # is a lambda (not `set_icon` directly) because `set_icon` isn't defined
+    # yet at this point in main() -- fine, since gui.py only ever CALLS it
+    # later (after the pause icon in its OWN window is clicked), by which
+    # time set_icon below has long since been defined.
+    gui.start(settings, control, on_pause_change=lambda: set_icon())
 
     thread = threading.Thread(target=run, args=(settings,),
                               kwargs={"control": control, "on_busy": on_busy},
@@ -175,43 +170,28 @@ def main():
         control.paused = not control.paused
         set_icon()
 
-    def toggle_names(_icon, item):
-        settings.detect_names = not settings.detect_names
-        settings_store.save(settings)
-
-    def toggle_faces(_icon, item):
-        settings.blur_faces = not settings.blur_faces
-        settings_store.save(settings)
-
-    def toggle_model(_icon, item):
-        settings.name_model = not settings.name_model
-        settings_store.save(settings)
-
-    def toggle_autostart(_icon, item):
-        from pii_blur import autostart
-        autostart.disable() if autostart.is_enabled() else autostart.enable()
-
     def open_settings(_icon, item):
-        # tkinter wants its own thread here (pystray callbacks aren't the main thread).
-        from pii_blur.gui import open_settings as show
-        threading.Thread(target=show, args=(settings,), daemon=True).start()
+        gui.request_open()
 
     def quit_app(_icon, item):
         control.stop.set()
         icon.stop()
 
+    # Every item's text is a callable (not a plain string) so the menu re-reads
+    # `settings.language` fresh each time it's opened -- changing the language
+    # in Settings takes effect immediately, no restart needed.
+    def _s(key):
+        return lambda item: i18n.t(key, settings.language)
+
+    # Just Pause/Resume, Settings, and Quit -- every actual toggle (names,
+    # smart model, faces, autostart) lives in the Settings window now (with
+    # its own hover explanations), not duplicated here too. A right-click
+    # menu crammed with every option is harder to scan, not more convenient.
     icon.menu = pystray.Menu(
-        pystray.MenuItem(lambda item: "Resume" if control.paused else "Pause", toggle_pause),
-        pystray.MenuItem("Settings…", open_settings, default=True),
-        pystray.MenuItem("Blur names (fuzzy)", toggle_names,
-                         checked=lambda item: settings.detect_names),
-        pystray.MenuItem("Smart name model (AI)", toggle_model,
-                         checked=lambda item: settings.name_model),
-        pystray.MenuItem("Blur faces", toggle_faces,
-                         checked=lambda item: settings.blur_faces),
-        pystray.MenuItem("Start with Windows", toggle_autostart,
-                         checked=lambda item: _autostart_state()),
-        pystray.MenuItem("Quit", quit_app),
+        pystray.MenuItem(lambda item: i18n.t("menu_resume" if control.paused else "menu_pause",
+                                              settings.language), toggle_pause),
+        pystray.MenuItem(_s("menu_settings"), open_settings, default=True),
+        pystray.MenuItem(_s("menu_quit"), quit_app),
     )
     set_icon()
     logger.info("tray started — auto blur is ON")

@@ -40,5 +40,12 @@ opencv-python>=4.8,<5
 # Tray app
 pystray>=0.19
 
+# Settings window: a thin, MIT-licensed theme layer over stdlib tkinter/ttk
+# (pure Python, ~550KB). Plain ttk's checkbox glyph renders in a dated,
+# Windows-95-era style no amount of styling the surrounding widget can fix —
+# ttkbootstrap's "round-toggle" Checkbutton variant is an actual modern
+# toggle switch instead, which is what the dated look needed.
+ttkbootstrap>=1.10
+
 # Tests
 pytest>=8.0

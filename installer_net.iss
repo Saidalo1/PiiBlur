@@ -73,6 +73,71 @@ var
   DownloadPage: TOutputProgressWizardPage;
   PayloadZip: String;
   DownloadOK: Boolean;
+  LangPage: TWizardPage;
+  LangRadios: array[0..2] of TNewRadioButton;
+
+// ---- Step 0: pick PiiBlur's OWN interface language (Uzbek/English/Russian) -
+// Separate from [Languages] above, which is only the INSTALLER WIZARD's own
+// text (Inno Setup has no Uzbek translation of its own UI) — this picks what
+// pii_blur.i18n the app itself starts in. Defaults to Uzbek (the app's own
+// default, pii_blur.i18n.DEFAULT_LANGUAGE) since that's most of the userbase;
+// changeable later from the app's own Settings window either way.
+procedure CreateLanguageChoicePage(AfterPageID: Integer);
+var
+  Lbl: TNewStaticText;
+  i: Integer;
+  Captions: array[0..2] of String;
+begin
+  LangPage := CreateCustomPage(AfterPageID,
+    'Choose your language', 'Select PiiBlur''s interface language.');
+  Lbl := TNewStaticText.Create(LangPage);
+  Lbl.Parent := LangPage.Surface;
+  Lbl.AutoSize := False;
+  Lbl.WordWrap := True;
+  Lbl.Width := LangPage.SurfaceWidth;
+  Lbl.Caption := 'You can change this later from PiiBlur''s own Settings window.';
+  Captions[0] := 'O''zbekcha';
+  Captions[1] := 'English';
+  Captions[2] := 'Русский';
+  for i := 0 to 2 do
+  begin
+    LangRadios[i] := TNewRadioButton.Create(LangPage);
+    LangRadios[i].Parent := LangPage.Surface;
+    LangRadios[i].Width := LangPage.SurfaceWidth;
+    LangRadios[i].Top := Lbl.Top + Lbl.Height + 12 + i * 24;
+    LangRadios[i].Caption := Captions[i];
+  end;
+  LangRadios[0].Checked := True;  // Uzbek default, matches the app's own default
+end;
+
+function ChosenLanguageCode(): String;
+begin
+  if LangRadios[1].Checked then Result := 'en'
+  else if LangRadios[2].Checked then Result := 'ru'
+  else Result := 'uz';
+end;
+
+// Writes the chosen language to the SAME config.json pii_blur.settings_store
+// reads, so the very first launch already starts in it. Never overwrites an
+// EXISTING config.json (a reinstall/upgrade over a configured install must
+// never silently reset the user's own language/settings back to a default).
+procedure WriteLanguageChoice();
+var
+  ConfigDir, ConfigFile: String;
+begin
+  ConfigDir := ExpandConstant('{userappdata}\PiiBlur');
+  ConfigFile := ConfigDir + '\config.json';
+  if FileExists(ConfigFile) then
+    Exit;
+  ForceDirectories(ConfigDir);
+  SaveStringToFile(ConfigFile, '{"language": "' + ChosenLanguageCode() + '"}', False);
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+    WriteLanguageChoice();
+end;
 
 // ---- Step 1: tell the user up front that this needs the internet ----------
 procedure InitializeWizard;
@@ -100,6 +165,7 @@ begin
     + 'Once installed, PiiBlur runs 100% offline — no further internet use.';
   DownloadPage := CreateOutputProgressPage('Downloading PiiBlur',
     'Please wait while PiiBlur''s components are downloaded.');
+  CreateLanguageChoicePage(InfoPage.ID);
 end;
 
 // ---- Step 2: resumable, never-give-up download via curl.exe ---------------

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from pii_blur.i18n import DEFAULT_LANGUAGE
+
 
 @dataclass
 class Settings:
@@ -19,6 +21,7 @@ class Settings:
     box_padding: int = 3
     # Behaviour
     auto: bool = False                 # True = silent auto; False = review-first
+    language: str = DEFAULT_LANGUAGE   # UI language code ("uz"/"en"/"ru") — see i18n.py
     # Windows OCR language tags, tried and MERGED so Latin (Uzbek/English) and
     # Cyrillic (Russian) are both read. A tag whose language pack isn't installed
     # is skipped automatically.

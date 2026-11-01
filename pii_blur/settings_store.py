@@ -12,7 +12,7 @@ _PATH = os.path.join(_DIR, "config.json")
 
 # Only these fields are user-editable / persisted (the rest stay at defaults).
 _KEYS = ("detect_names", "name_model", "blur_faces", "min_confidence",
-         "blur_strength", "auto", "poll_seconds")
+         "blur_strength", "auto", "poll_seconds", "language")
 
 
 def load() -> Settings:
