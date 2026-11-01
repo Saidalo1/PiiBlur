@@ -183,6 +183,21 @@ UI_STOPWORDS = {
     "man", "yoq", "koa", "kod", "ang", "eshitmaganakanman", "tushundim", "tushunmima",
     "qoyilindi", "telegramdan", "batafsii", "sticker", "messages", "voice", "message",
     "va", "aka", "ака", "had", "hop", "нор", "ok", "rahmat", "don", "know", "told",
+    # Real false positive: OCR reads the capital "I" in "AI'ga" (dative case of
+    # the acronym "AI", very common in tech-content screenshots) as a lowercase
+    # "l", producing "Al'ga" -- which looks exactly like a real Uzbek given name
+    # plus its dative suffix ("Alisher'ga"), so the model flags it as a name.
+    "al'ga", "ai'ga",
+    # Common Uzbek sentence-initial connectors/discourse words -- grammatical
+    # function words, never names, but capitalized when they start a sentence.
+    # Found via a real false positive ("Aynan", "Albatta" -> OCR-garbled
+    # "Abatta") on a screenshot of plain Uzbek prose -- the stoplist had so far
+    # only been built from CRM/UI-chrome testing, never long-form text, so this
+    # whole category was simply missing. Added proactively, not one at a time.
+    "aynan", "albatta", "abatta", "lekin", "ammo", "chunki", "demak", "balki",
+    "garchi", "masalan", "bundan", "shunday", "natijada", "xullas", "umuman",
+    "darhaqiqat", "xolbuki", "shuningdek", "afsuski", "ehtimol", "nazarimda",
+    "menimcha", "aslida", "ayniqsa", "binobarin", "demakki",
     # Same English weekday-abbreviation timestamp as NAME_STOPWORDS above -- the
     # neural model itself mistagged a bare "Thu" sitting alone on a chat row as
     # a person name (0.66 confidence), a direct false positive on its own, not

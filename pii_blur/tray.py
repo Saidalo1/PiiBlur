@@ -141,6 +141,18 @@ def main():
     # time set_icon below has long since been defined.
     gui.start(settings, control, on_pause_change=lambda: set_icon())
 
+    # Real complaint: after install, the app silently vanishes into the tray
+    # with zero visible confirmation it's actually running -- no window, no
+    # animation, nothing (a hidden-icons tray overflow makes even the icon
+    # itself easy to miss). Open Settings once, automatically, the very
+    # first time the app ever runs, purely so the user SEES it start --
+    # never again after that (onboarding.seen/mark_seen, same mechanism as
+    # the one-time flash toast above).
+    from pii_blur import onboarding as _onboarding
+    if not _onboarding.seen("first_run_settings"):
+        gui.request_open()
+        _onboarding.mark_seen("first_run_settings")
+
     thread = threading.Thread(target=run, args=(settings,),
                               kwargs={"control": control, "on_busy": on_busy},
                               daemon=True)

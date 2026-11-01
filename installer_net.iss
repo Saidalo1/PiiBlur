@@ -75,7 +75,7 @@ Filename: "{app}\PiiBlur.exe"; Description: "Launch PiiBlur"; Flags: nowait post
 
 [Code]
 var
-  DownloadPage: TDownloadWizardPage;
+  DownloadPage: TOutputProgressWizardPage;
   DownloadOK: Boolean;
   LangPage: TWizardPage;
   LangRadios: array[0..2] of TNewRadioButton;
@@ -143,16 +143,22 @@ begin
     WriteLanguageChoice();
 end;
 
-// Overrides TDownloadWizardPage's default status line, which otherwise shows
-// the raw download URL -- not something an ordinary user should have to look
-// at, and not informative to them either. Shown continuously as bytes arrive
-// (not once per burst), same as DoDownload's own comment explains.
+// Drives a PLAIN output-progress page (not TDownloadWizardPage) so we have
+// full control of the displayed text -- TDownloadWizardPage.Download() was
+// tried first and rejected: it overwrites whatever the OnDownloadProgress
+// callback sets with its own "Downloading file: <the raw URL>" status line
+// right after the callback returns, so there was no way to actually hide the
+// URL while using it. Calling the global DownloadTemporaryFile() function
+// directly instead means we own the page's text completely.
 function OnDownloadProgress(const Url, FileName: String; const Progress, ProgressMax: Int64): Boolean;
 begin
   if ProgressMax > 0 then
+  begin
+    DownloadPage.SetProgress(Progress, ProgressMax);
     DownloadPage.SetText('Downloading PiiBlur…',
       IntToStr(Progress div (1024 * 1024)) + ' MB of ' +
-      IntToStr(ProgressMax div (1024 * 1024)) + ' MB')
+      IntToStr(ProgressMax div (1024 * 1024)) + ' MB');
+  end
   else
     DownloadPage.SetText('Downloading PiiBlur…',
       IntToStr(Progress div (1024 * 1024)) + ' MB');
@@ -183,8 +189,8 @@ begin
     + #13#10#13#10
     + 'Nothing is uploaded; this is a one-way download of PiiBlur itself. '
     + 'Once installed, PiiBlur runs 100% offline — no further internet use.';
-  DownloadPage := CreateDownloadPage('Downloading PiiBlur',
-    'Please wait while PiiBlur''s components are downloaded.', @OnDownloadProgress);
+  DownloadPage := CreateOutputProgressPage('Downloading PiiBlur',
+    'Please wait while PiiBlur''s components are downloaded.');
   CreateLanguageChoicePage(InfoPage.ID);
 end;
 
@@ -201,20 +207,18 @@ var
 begin
   Result := False;
   Attempt := 0;
-  DownloadPage.Clear;
-  DownloadPage.Add('{#PayloadUrl}', 'PiiBlur_payload.zip', '{#PayloadSha256}');
+  DownloadPage.SetText('Connecting…', 'Starting the download — this can take a few seconds.');
   DownloadPage.Show;
   try
     while True do
     begin
       Attempt := Attempt + 1;
       try
-        DownloadPage.Download;
+        DownloadTemporaryFile('{#PayloadUrl}', 'PiiBlur_payload.zip',
+          '{#PayloadSha256}', @OnDownloadProgress);
         Result := True;
         Exit;
       except
-        if DownloadPage.AbortedByUser then
-          Exit;  // Result stays False -- user cancelled, don't re-prompt
         // DownloadTemporaryFile has no public resume-across-retries API (unlike
         // curl's -C -), so a retry here restarts the whole payload -- still
         // far better than failing the install outright on one network blip.

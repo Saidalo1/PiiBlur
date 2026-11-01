@@ -91,6 +91,27 @@ def test_education_form_words_not_flagged_as_names():
         assert reds == [], word
 
 
+def test_ocr_garbled_ai_acronym_not_flagged_as_name():
+    # Real false positive: OCR misread the capital "I" in "AI'ga" (dative case
+    # of the "AI" acronym, common in tech-content screenshots) as lowercase
+    # "l", producing "Al'ga" -- which reads exactly like a real Uzbek given
+    # name plus its dative suffix ("Alisher'ga"), so the model flagged it.
+    reds = detect_names_model(_row(["Ularni", "Al'ga", "tashladik"]),
+                              stopwords=patterns.UI_STOPWORDS)
+    assert reds == []
+
+
+def test_uzbek_sentence_connectors_not_flagged_as_names():
+    # Real false positive: ordinary Uzbek prose (not CRM/UI chrome) starts
+    # sentences with these discourse connectors capitalized -- "Aynan" and
+    # OCR-garbled "Abatta" (from "Albatta") were both flagged as names on a
+    # real screenshot of plain text, since the stoplist had never covered
+    # this category before.
+    for word in ("Aynan", "Albatta", "Abatta", "Lekin", "Chunki", "Masalan"):
+        reds = detect_names_model(_row([word, "shu", "muammoni"]), stopwords=patterns.UI_STOPWORDS)
+        assert reds == [], word
+
+
 def test_crm_sidebar_label_not_flagged_as_name():
     # Real false positive from a KORVISA CRM sidebar screenshot: "Mijozlar"
     # ("Clients") is a plain menu label, but the model flagged it when fed
