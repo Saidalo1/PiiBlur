@@ -290,6 +290,15 @@ COMMON_GIVEN_NAMES_ALL = COMMON_GIVEN_NAMES | _load_uz_names()
 # UI/form text PiiBlur actually sees, so this is the safer default.
 AMBIGUOUS_GIVEN_NAMES = {
     "mamlakat", "viloyat", "manzil", "maktub", "miqdor", "rahbar", "davlat",
+    # Found via a real formal-essay screenshot: these are common, everyday
+    # Uzbek nouns in formal/educational writing (an essay's own structural
+    # words -- "reja"="plan", "xulosa"="conclusion" -- and abstract nouns --
+    # "olim"="scientist/scholar", "madaniyat"="culture") that ALSO happen to
+    # be rare real given names (Central Asian naming tradition often draws on
+    # exactly this kind of virtue/concept vocabulary) -- same bug shape as
+    # mamlakat/viloyat/davlat above, just a formal-writing register the
+    # gazetteer audit hadn't been tested against yet.
+    "olim", "reja", "xulosa", "madaniyat",
     # Found by systematically cross-referencing our full ~11.6k name list against
     # a real Uzbek dictionary (uz-hunspell, github.com/uzbek-net/uz-hunspell) —
     # 2115 overlaps total, but MOST are genuine rare names that a spellcheck

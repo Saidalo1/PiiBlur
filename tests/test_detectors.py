@@ -198,6 +198,20 @@ def test_ordinary_word_ending_in_ov_not_rescued_by_unrelated_capitalized_word():
     assert not any(r.category == "name" for r in reds)
 
 
+def test_formal_essay_words_not_flagged_bare():
+    # Real false positive from a formal Uzbek school-essay screenshot: "Olim"
+    # (scientist/scholar) being gazetteer-listed and bare let the clustering
+    # logic chain it to unrelated capitalized words on NEIGHBOURING lines
+    # (numbered list items 1/2/3), producing one giant false redaction
+    # spanning 3 lines and blurring unrelated text too -- not just a single
+    # wrong word, but real collateral damage from one bad anchor. "Reja"
+    # (plan), "Xulosa" (conclusion) and "Madaniyat" (culture) are the essay's
+    # own structural/formal vocabulary, same bug shape.
+    for word in ("Olim", "Reja", "Xulosa", "Madaniyat"):
+        reds = detect(_row([word]), min_confidence=0.60)
+        assert not any(r.category == "name" for r in reds), word
+
+
 def test_davlat_sidebar_label_not_flagged_bare():
     # Real false positive from a KORVISA CRM sidebar screenshot: "Davlat"
     # ("State", part of "Davlat havolalari" = "Government links") is a rare
