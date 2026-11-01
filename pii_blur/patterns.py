@@ -224,6 +224,12 @@ UI_STOPWORDS = {
     # the model saw often isn't the bare dictionary word, same shape as the
     # "I.Kirish" roman-numeral-prefix case but on the other end of the word).
     "bayon", "katit", "munaqqidning",
+    # Historical dynasty/ethnonym/language names -- real proper nouns, but
+    # never PERSON names: the classic PERSON-vs-other-entity-type confusion
+    # every NER model makes, found in an academic article on Chagatai-era
+    # literature. "ofkarakhanid" is "of"+"Karakhanid" merged with no space
+    # as OCR read it (same shape as the roman-numeral-prefix case).
+    "temurliylar", "chaghatay", "turkish", "karakhanid", "ofkarakhanid",
     # "Ko'hinur" -- the Koh-i-Noor diamond, used metaphorically in the same
     # patriotic essay ("qimmatbaho Ko'hinur olmosi kabi" = "precious like the
     # Koh-i-Noor diamond"). A real proper noun, but never a PERSON's name.

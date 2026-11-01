@@ -102,6 +102,18 @@ def test_roman_numeral_section_marker_prefix_not_flagged_as_name():
         assert reds == [], word
 
 
+def test_historical_ethnonyms_not_flagged_as_name():
+    # Real false positives from an academic article on Chagatai-era
+    # literature: "Temurliylar" (the Timurid dynasty), "Chaghatay" and
+    # "Turkish" (language/ethnonym names), "ofkarakhanid" ("of"+"Karakhanid"
+    # merged with no space, as OCR read it) are the classic PERSON-vs-other-
+    # entity-type confusion every NER model makes -- real proper nouns, never
+    # a person.
+    for word in ("Temurliylar", "Chaghatay", "Turkish", "Karakhanid", "Ofkarakhanid"):
+        reds = detect_names_model(_row([word]), stopwords=patterns.UI_STOPWORDS)
+        assert reds == [], word
+
+
 def test_academic_document_vocabulary_not_flagged_as_name():
     # Real false positives from formal academic Uzbek documents: "Bayon"
     # (narrative/account) recurs constantly in a teaching-methodology
