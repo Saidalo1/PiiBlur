@@ -143,6 +143,22 @@ begin
     WriteLanguageChoice();
 end;
 
+// Overrides TDownloadWizardPage's default status line, which otherwise shows
+// the raw download URL -- not something an ordinary user should have to look
+// at, and not informative to them either. Shown continuously as bytes arrive
+// (not once per burst), same as DoDownload's own comment explains.
+function OnDownloadProgress(const Url, FileName: String; const Progress, ProgressMax: Int64): Boolean;
+begin
+  if ProgressMax > 0 then
+    DownloadPage.SetText('Downloading PiiBlur…',
+      IntToStr(Progress div (1024 * 1024)) + ' MB of ' +
+      IntToStr(ProgressMax div (1024 * 1024)) + ' MB')
+  else
+    DownloadPage.SetText('Downloading PiiBlur…',
+      IntToStr(Progress div (1024 * 1024)) + ' MB');
+  Result := True;  // continue the download
+end;
+
 // ---- Step 1: tell the user up front that this needs the internet ----------
 procedure InitializeWizard;
 var
@@ -168,7 +184,7 @@ begin
     + 'Nothing is uploaded; this is a one-way download of PiiBlur itself. '
     + 'Once installed, PiiBlur runs 100% offline — no further internet use.';
   DownloadPage := CreateDownloadPage('Downloading PiiBlur',
-    'Please wait while PiiBlur''s components are downloaded.', nil);
+    'Please wait while PiiBlur''s components are downloaded.', @OnDownloadProgress);
   CreateLanguageChoicePage(InfoPage.ID);
 end;
 
