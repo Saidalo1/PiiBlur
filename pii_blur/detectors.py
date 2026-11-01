@@ -155,7 +155,8 @@ def _name_adjacent(a: tuple, b: tuple) -> bool:
     return _adjacency_kind(a, b) is not None
 
 
-def detect_names(words: list[Word], gazetteer: set | None = None) -> list[Redaction]:
+def detect_names(words: list[Word], gazetteer: set | None = None,
+                  ner_corroborated: frozenset | None = None) -> list[Redaction]:
     """Heuristic name detection (Latin UZ + Cyrillic RU), by 2D proximity.
 
     1. Mark ANCHOR words — a real name signal: an Uzbek particle ("o'g'li"/"qizi"),
@@ -172,6 +173,7 @@ def detect_names(words: list[Word], gazetteer: set | None = None) -> list[Redact
     two OCR lines, while the adjacency caps keep the box from over-reaching. Lower
     confidence by design — names are the unreliable part."""
     gaz = patterns.COMMON_GIVEN_NAMES_ALL if gazetteer is None else gazetteer
+    ner_boxes = ner_corroborated or frozenset()
     n = len(words)
     tokens = [w.text.strip(_PUNCT) for w in words]
 
@@ -391,13 +393,39 @@ def detect_names(words: list[Word], gazetteer: set | None = None) -> list[Redact
         # of a sentence — exactly how a chat-list/CRM card shows a bare "Timur" or
         # "Isroilov"), it's rescued to 0.65: real standalone names behave this way;
         # ordinary words embedded in a sentence don't.
+        #
+        # The isolated rescue is the SOURCE of a real recurring false-positive
+        # class: a dictionary-lookup-only hit ("Olim"="scholar", "Mijozlar"=
+        # "Clients", "Davlat"="State"...) sitting alone on its own short line —
+        # a numbered essay list item, a CRM sidebar label — looks exactly like
+        # the genuine "isolated contact name" case structurally, so it kept
+        # getting rescued too. AMBIGUOUS_GIVEN_NAMES (checked earlier, via
+        # _is_ambiguous/gaz_hit) is the PRIMARY defense for words already known
+        # to cause this -- it blocks them from anchoring bare at all, same as
+        # before. For everything else, a second, independent signal -- the
+        # neural model flagging the SAME word (ner_boxes) -- is used as a
+        # CONFIDENCE BOOST, not a hard requirement: hybrid, not binary. An
+        # uncorroborated bare gazetteer word still clears the app's default
+        # min_confidence (0.60) exactly as before (a real but less-common name
+        # the tiny offline NER model doesn't happen to recognize -- e.g.
+        # "E'zoza" -- must still be caught; for a privacy tool, missing a real
+        # name is worse than one extra ambiguous word slipping through). But
+        # it scores lower than a corroborated one, so raising min_confidence in
+        # Settings trades some of that recall for fewer false positives on
+        # unknown-but-ambiguous words -- a real lever instead of an all-or-
+        # nothing gate. (Same context-corroboration shape Presidio/Google DLP
+        # use for the identical ambiguity, researched before implementing.)
         if has_particle or has_fused:
             conf = 0.78
         elif has_surname or has_gaz:
             if len(members) >= 2:
                 conf = 0.70
-            elif isolated:
+            elif isolated and has_surname:
                 conf = 0.65
+            elif isolated and words[members[0]].box in ner_boxes:
+                conf = 0.68
+            elif isolated:
+                conf = 0.60
             else:
                 conf = 0.50
         else:
@@ -538,10 +566,14 @@ def preprocess_words(words: list[Word]) -> list[Word]:
 
 
 def detect(words: list[Word], *, names: bool = True,
-           min_confidence: float = 0.0, gazetteer: set | None = None) -> list[Redaction]:
+           min_confidence: float = 0.0, gazetteer: set | None = None,
+           ner_corroborated: frozenset | None = None) -> list[Redaction]:
     """Full detection over OCR words. `names=False` disables the fuzzy name pass
     (keep only rock-solid structured identifiers). `min_confidence` filters out
-    weaker guesses. Returns redaction boxes ready for the blur step."""
+    weaker guesses. `ner_corroborated` is an optional set of word boxes the
+    neural name pass (ner_model.detect_names_model) independently flagged —
+    see detect_names' docstring for why a bare gazetteer-word match needs it.
+    Returns redaction boxes ready for the blur step."""
     words = preprocess_words(words)
     results: list[Redaction] = []
     for line in group_lines(words):
@@ -549,7 +581,7 @@ def detect(words: list[Word], *, names: bool = True,
     # Names run over ALL words (2D), not per line, so a name wrapped onto the next
     # OCR line is still joined.
     if names:
-        results.extend(detect_names(words, gazetteer))
+        results.extend(detect_names(words, gazetteer, ner_corroborated))
     return [r for r in results if r.confidence >= min_confidence]
 
 

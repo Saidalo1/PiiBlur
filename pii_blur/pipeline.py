@@ -46,19 +46,28 @@ def process_image(img: Image.Image, settings: Settings = DEFAULT, ocr_fn=None):
     # let a duplicate-but-garbled OCR reading survive as its own false positive
     # (see preprocess_words' docstring for the concrete bug this fixes).
     words = detectors.preprocess_words(ocr_fn(img))
+    # The neural model runs FIRST (when enabled) so its hits can corroborate the
+    # gazetteer pass below -- a bare dictionary-word match ("Olim"="scholar" but
+    # also a rare real name) only gets rescued to blur-worthy confidence when
+    # isolated AND the model independently agrees it's a name; see detect_names'
+    # docstring for the false-positive class this fixes (the same context-
+    # corroboration pattern Presidio/Google DLP use for the identical ambiguity,
+    # researched before implementing). The gazetteer still covers known names and
+    # Cyrillic (which the Latin model can't read) on its own; overlapping boxes
+    # from both sources are merged below so a name caught by both is blurred once.
+    ner_redactions = []
+    ner_boxes = frozenset()
+    if settings.detect_names and settings.name_model:
+        from pii_blur import ner_model, patterns
+        ner_redactions = ner_model.detect_names_model(
+            words, stopwords=patterns.UI_STOPWORDS)
+        ner_boxes = frozenset(r.box for r in ner_redactions)
     redactions = detectors.detect(
         words,
         names=settings.detect_names,
         min_confidence=settings.min_confidence,
-    )
-    # Hybrid name detection: the neural model adds names the gazetteer/rules can't
-    # know (unlisted surnames, lowercase handles). The gazetteer still covers known
-    # names and Cyrillic (which the Latin model can't read); overlapping boxes are
-    # merged below so a name caught by both is blurred once.
-    if settings.detect_names and settings.name_model:
-        from pii_blur import ner_model, patterns
-        redactions = redactions + ner_model.detect_names_model(
-            words, stopwords=patterns.UI_STOPWORDS)
+        ner_corroborated=ner_boxes,
+    ) + ner_redactions
     if settings.detect_names and redactions:
         # Cross-source bridge: a lowercase surname sitting next to ANY already-
         # confirmed name (from the gazetteer OR the model) joins the cluster —

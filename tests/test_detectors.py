@@ -4,6 +4,7 @@ We build synthetic OCR `Word`s (text + box) and assert what gets flagged. This i
 how we lock in the tricky cases the research warned about: values SPLIT across
 word boxes (spaced phone / grouped card) and over-redaction.
 """
+from pii_blur import patterns
 from pii_blur.detectors import Word, detect, _dedupe_words, preprocess_words
 
 
@@ -109,8 +110,13 @@ def test_isolated_surname_alone_on_its_line_is_redacted():
 
 def test_isolated_gazetteer_given_name_alone_is_redacted():
     # A bare given name alone on its row (no surname suffix at all) — e.g. "Timur"
-    # shown as a contact's display name — should also be caught via the gazetteer.
-    reds = detect(_row(["Timur"]), min_confidence=0.60)
+    # shown as a contact's display name — should also be caught via the gazetteer,
+    # but ONLY when the neural model independently corroborates it (ner_corroborated)
+    # -- a bare dictionary-word-only match without that second signal is no longer
+    # trusted alone (see detect_names' docstring: this is what stops common words
+    # like "Olim"/"Davlat" from being rescued just for sitting alone on a line).
+    words = _row(["Timur"])
+    reds = detect(words, min_confidence=0.60, ner_corroborated=frozenset({words[0].box}))
     assert any(r.category == "name" for r in reds)
 
 
@@ -127,8 +133,10 @@ def test_gazetteer_name_mid_sentence_not_over_confident():
 
 def test_honorific_does_not_break_isolation():
     # Dual-language OCR often reads an honorific twice ("aka" + "ака") on the same
-    # row as a bare contact name — that must not stop the name from being caught.
-    reds = detect(_row(["Samandar", "aka", "ака", "(Idrok)"]), min_confidence=0.60)
+    # row as a bare contact name — that must not stop the name from being caught
+    # (with the model's corroboration, same as the isolated-gazetteer test above).
+    words = _row(["Samandar", "aka", "ака", "(Idrok)"])
+    reds = detect(words, min_confidence=0.60, ner_corroborated=frozenset({words[0].box}))
     assert any(r.category == "name" and "Samandar" in r.text for r in reds)
 
 
@@ -137,7 +145,8 @@ def test_compound_name_with_gazetteer_suffix_is_redacted():
     # onto a recognizable base name) — e.g. "Mir" + "alisher" = "Miralisher",
     # the user's real case. "alisher" is in the gazetteer but "Miralisher" isn't
     # an exact match, so this needs the suffix-compound check to catch it.
-    reds = detect(_row(["Miralisher"]), min_confidence=0.60)
+    words = _row(["Miralisher"])
+    reds = detect(words, min_confidence=0.60, ner_corroborated=frozenset({words[0].box}))
     assert any(r.category == "name" for r in reds)
 
 
@@ -196,6 +205,29 @@ def test_ordinary_word_ending_in_ov_not_rescued_by_unrelated_capitalized_word():
     # word, or ordinary tech vocabulary next to Uzbek grammar gets flagged.
     reds = detect(_row(["bo'lmasa", "—", "Standard", "S0", "haqiqiy"]), min_confidence=0.60)
     assert not any(r.category == "name" for r in reds)
+
+
+def test_bare_gazetteer_word_gets_a_confidence_boost_from_ner_corroboration():
+    # Direct test of the corroboration mechanism itself (not a specific
+    # reported word): a word that's ONLY in the gazetteer (not
+    # AMBIGUOUS_GIVEN_NAMES, not a SURNAME_SUFFIX match) sitting alone on its
+    # own short line is a HYBRID signal, not a binary gate -- it still clears
+    # the app's default min_confidence (0.60) on its own (a privacy tool must
+    # not silently stop catching ordinary isolated real names the tiny
+    # offline NER model doesn't happen to recognize), but scores meaningfully
+    # LOWER than when the neural model also independently flags the same
+    # word. Uses a gazetteer entry not already on the manual ambiguous list,
+    # to isolate this mechanism from that list.
+    assert "nodira" in patterns.COMMON_GIVEN_NAMES_ALL
+    assert "nodira" not in patterns.AMBIGUOUS_GIVEN_NAMES
+    words = _row(["Nodira"])
+    without = detect(words, min_confidence=0.0)
+    without_conf = max(r.confidence for r in without if r.category == "name")
+    with_ner = detect(words, min_confidence=0.0,
+                      ner_corroborated=frozenset({words[0].box}))
+    with_conf = max(r.confidence for r in with_ner if r.category == "name")
+    assert without_conf >= 0.60  # still clears the app's default threshold alone
+    assert with_conf > without_conf  # but corroboration scores meaningfully higher
 
 
 def test_formal_essay_words_not_flagged_bare():
@@ -347,7 +379,9 @@ def test_short_word_fuzzy_canon_match_requires_five_chars():
     # still be caught.
     reds = detect(_row(["Toil"]), min_confidence=0.60)
     assert not any(r.category == "name" for r in reds)
-    reds2 = detect(_row(["Toli"]), min_confidence=0.60)
+    toli_words = _row(["Toli"])
+    reds2 = detect(toli_words, min_confidence=0.60,
+                   ner_corroborated=frozenset({toli_words[0].box}))
     assert any(r.category == "name" for r in reds2)
 
 
@@ -365,7 +399,7 @@ def test_undecodable_dual_language_artifact_does_not_block_name_isolation():
     # screenshot.
     words = _row(["Doston"]) + [Word("Mon", (300, 10, 30, 20)),
                                 Word("���", (300, 10, 30, 20))]
-    reds = detect(words, min_confidence=0.60)
+    reds = detect(words, min_confidence=0.60, ner_corroborated=frozenset({words[0].box}))
     assert any(r.category == "name" and "Doston" in r.text for r in reds)
 
 
