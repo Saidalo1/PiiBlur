@@ -20,6 +20,19 @@ _STRINGS: dict[str, dict[str, str]] = {
     "menu_pause": {"uz": "Pauza", "en": "Pause", "ru": "Пауза"},
     "menu_settings": {"uz": "Sozlamalar…", "en": "Settings…", "ru": "Настройки…"},
     "menu_quit": {"uz": "Chiqish", "en": "Quit", "ru": "Выход"},
+    "menu_update_available": {
+        "uz": "Yangilanish mavjud ({tag})", "en": "Update available ({tag})",
+        "ru": "Доступно обновление ({tag})",
+    },
+    "menu_skip_update": {
+        "uz": "Bu versiyani o'tkazib yuborish", "en": "Skip this version",
+        "ru": "Пропустить эту версию",
+    },
+    "toast_update_available": {
+        "uz": "PiiBlur {tag} chiqdi. O'rnatish uchun tray menyusidan tanlang.",
+        "en": "PiiBlur {tag} is out. Pick it from the tray menu to install.",
+        "ru": "Вышла PiiBlur {tag}. Выберите в меню трея, чтобы установить.",
+    },
 
     "gui_title": {"uz": "PiiBlur — Sozlamalar", "en": "PiiBlur — Settings",
                  "ru": "PiiBlur — Настройки"},

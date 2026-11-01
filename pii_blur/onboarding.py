@@ -20,6 +20,21 @@ def seen(key: str) -> bool:
 
 
 def mark_seen(key: str) -> None:
+    set_value(key, True)
+
+
+def get_value(key: str, default=None):
+    """Arbitrary (not just boolean) persisted value -- e.g. updater.py's
+    "skip this version" string, same file as the one-time flags above since
+    both are small, non-user-editable, one-off bits of state."""
+    try:
+        with open(_PATH, encoding="utf-8") as f:
+            return json.load(f).get(key, default)
+    except Exception:
+        return default
+
+
+def set_value(key: str, value) -> None:
     try:
         os.makedirs(_DIR, exist_ok=True)
         data = {}
@@ -28,7 +43,7 @@ def mark_seen(key: str) -> None:
                 data = json.load(f)
         except Exception:
             pass
-        data[key] = True
+        data[key] = value
         with open(_PATH, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
     except Exception:

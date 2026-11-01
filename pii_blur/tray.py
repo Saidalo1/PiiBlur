@@ -158,6 +158,42 @@ def main():
                               daemon=True)
     thread.start()
 
+    # Self-update check: silent, background, best-effort (see updater.py --
+    # never checks/offers anything for a dev/source run, never auto-installs).
+    # Found no update -> available_update stays None -> the menu item below
+    # (visible=lambda: ...) simply never shows, so this is invisible when
+    # there's nothing to offer, exactly the "quiet unless it matters" shape
+    # used for the busy-icon/flash indicator elsewhere in this file.
+    available_update = {}
+
+    def _check_update():
+        from pii_blur import __version__, onboarding, updater
+        info = updater.check_for_update(__version__)
+        if not info:
+            return
+        if onboarding.get_value("skip_update_tag") == info["tag"]:
+            return  # user already dismissed exactly this version
+        available_update.update(info)
+        try:
+            icon.notify(i18n.t("toast_update_available", settings.language).format(tag=info["tag"]),
+                        "PiiBlur")
+        except Exception:
+            pass
+    threading.Thread(target=_check_update, name="update-check", daemon=True).start()
+
+    def do_update(_icon, item):
+        from pii_blur import updater
+        ok = updater.download_and_launch_installer(
+            available_update.get("download_url"), available_update.get("sha256"))
+        if ok:
+            control.stop.set()
+            icon.stop()
+
+    def skip_update(_icon, item):
+        from pii_blur import onboarding
+        onboarding.set_value("skip_update_tag", available_update.get("tag"))
+        available_update.clear()
+
     # Prime the OCR engine in the background so the FIRST screenshot blurs fast
     # (otherwise the one-off model-load cost lands on the user's first paste).
     def _warm():
@@ -199,10 +235,19 @@ def main():
     # smart model, faces, autostart) lives in the Settings window now (with
     # its own hover explanations), not duplicated here too. A right-click
     # menu crammed with every option is harder to scan, not more convenient.
+    # The update items are only ever VISIBLE once a real check found a newer
+    # release (available_update populated) -- invisible by default, so this
+    # never clutters the menu for the common case of "already up to date".
     icon.menu = pystray.Menu(
         pystray.MenuItem(lambda item: i18n.t("menu_resume" if control.paused else "menu_pause",
                                               settings.language), toggle_pause),
         pystray.MenuItem(_s("menu_settings"), open_settings, default=True),
+        pystray.MenuItem(
+            lambda item: i18n.t("menu_update_available", settings.language).format(
+                tag=available_update.get("tag", "")),
+            do_update, visible=lambda item: bool(available_update)),
+        pystray.MenuItem(_s("menu_skip_update"), skip_update,
+                         visible=lambda item: bool(available_update)),
         pystray.MenuItem(_s("menu_quit"), quit_app),
     )
     set_icon()
