@@ -91,6 +91,18 @@ def test_education_form_words_not_flagged_as_names():
         assert reds == [], word
 
 
+def test_crm_sidebar_label_not_flagged_as_name():
+    # Real false positive from a KORVISA CRM sidebar screenshot: "Mijozlar"
+    # ("Clients") is a plain menu label, but the model flagged it when fed
+    # real OCR context -- a stray garbled icon-glyph token ("0)") sitting on
+    # the same line shifted the model's prediction, even though the bare word
+    # alone never reproduced it in isolation. The UI stoplist is what actually
+    # filters the model pass, and only had the singular "mijoz", not this
+    # plural sidebar form.
+    reds = detect_names_model(_row(["0)", "Mijozlar"]), stopwords=patterns.UI_STOPWORDS)
+    assert reds == []
+
+
 def test_rescue_does_not_fire_without_a_real_confirmed_name_nearby():
     # No existing name redaction at all -> nothing to bridge to, even if a
     # lowercase surname-suffix word is present.

@@ -175,7 +175,7 @@ UI_STOPWORDS = {
     "vazifalar", "devices", "sozlamalar", "sorlamalar", "pdf", "telefon", "teiefon",
     "raqam", "yosh", "oquv", "0quv", "ochiq", "sohasi", "sohas", "til", "sertifikati",
     "sertlfikati", "topik", "izoh", "jarayonda", "bakalavr", "magistratura",
-    "kechki", "kunduzgi", "sirtqi", "maxsus",
+    "kechki", "kunduzgi", "sirtqi", "maxsus", "mijozlar", "mijoz",
     "bitirganman", "olmaganman", "oturganman", "diurganman", "javobini", "javoblm",
     "javobi", "avval", "olish", "kotardi", "kotarmadi", "sinfni", "lichkaga",
     "chiqdim", "opam", "father", "sohada", "kasbiy", "mashinasozlik", "tashlab",
@@ -274,7 +274,7 @@ COMMON_GIVEN_NAMES_ALL = COMMON_GIVEN_NAMES | _load_uz_names()
 # caught. The common-noun sense is far more frequent than the name sense in the
 # UI/form text PiiBlur actually sees, so this is the safer default.
 AMBIGUOUS_GIVEN_NAMES = {
-    "mamlakat", "viloyat", "manzil", "maktub", "miqdor", "rahbar",
+    "mamlakat", "viloyat", "manzil", "maktub", "miqdor", "rahbar", "davlat",
     # Found by systematically cross-referencing our full ~11.6k name list against
     # a real Uzbek dictionary (uz-hunspell, github.com/uzbek-net/uz-hunspell) —
     # 2115 overlaps total, but MOST are genuine rare names that a spellcheck

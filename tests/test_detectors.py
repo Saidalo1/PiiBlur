@@ -198,6 +198,15 @@ def test_ordinary_word_ending_in_ov_not_rescued_by_unrelated_capitalized_word():
     assert not any(r.category == "name" for r in reds)
 
 
+def test_davlat_sidebar_label_not_flagged_bare():
+    # Real false positive from a KORVISA CRM sidebar screenshot: "Davlat"
+    # ("State", part of "Davlat havolalari" = "Government links") is a rare
+    # but real gazetteer-listed Uzbek given name, same bug shape as
+    # "Mamlakat"/"Viloyat" -- must not be flagged bare in an ordinary label.
+    reds = detect(_row(["Davlat", "havolalari"]), min_confidence=0.60)
+    assert not any(r.category == "name" for r in reds)
+
+
 def test_numbers_and_weekdays_in_gazetteer_not_flagged_bare():
     # Found via a systematic scan (cross-referencing the full ~11.6k name list
     # against a real Uzbek dictionary, uz-hunspell): numbers and weekday names
