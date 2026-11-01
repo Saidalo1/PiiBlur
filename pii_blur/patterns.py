@@ -216,6 +216,14 @@ UI_STOPWORDS = {
     # this separate list). "yagonadir" ("is unique/one-of-a-kind") was an
     # ALL-CAPS document title the model mistagged on the same essay.
     "kirish", "xulosa", "reja", "asosiy", "vatan", "bulbul", "quyosh", "yagonadir",
+    # More academic/document vocabulary found the same way: "bayon"=narrative/
+    # account (a teaching-methodology article's own recurring term), "kalit
+    # so'zlar"="keywords" (a paper's standard header, OCR-garbled to "Katit"),
+    # "munaqqid"="literary critic" (with the possessive suffix attached as OCR
+    # read it, "munaqqidning" -- Uzbek's suffixes mean the exact surface form
+    # the model saw often isn't the bare dictionary word, same shape as the
+    # "I.Kirish" roman-numeral-prefix case but on the other end of the word).
+    "bayon", "katit", "munaqqidning",
     # "Ko'hinur" -- the Koh-i-Noor diamond, used metaphorically in the same
     # patriotic essay ("qimmatbaho Ko'hinur olmosi kabi" = "precious like the
     # Koh-i-Noor diamond"). A real proper noun, but never a PERSON's name.

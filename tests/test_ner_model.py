@@ -102,6 +102,17 @@ def test_roman_numeral_section_marker_prefix_not_flagged_as_name():
         assert reds == [], word
 
 
+def test_academic_document_vocabulary_not_flagged_as_name():
+    # Real false positives from formal academic Uzbek documents: "Bayon"
+    # (narrative/account) recurs constantly in a teaching-methodology
+    # article; "Katit" is OCR-garbled "Kalit" from "Kalit so'zlar:"
+    # (keywords, a standard paper header); "munaqqidning" is "literary
+    # critic" with its possessive suffix attached exactly as OCR read it.
+    for word in ("Bayon", "Katit", "Munaqqidning"):
+        reds = detect_names_model(_row([word]), stopwords=patterns.UI_STOPWORDS)
+        assert reds == [], word
+
+
 def test_nafaqat_connector_not_flagged_as_name():
     # "nafaqat...balki (ham)" = "not only...but also" -- same discourse-
     # connector family as aynan/albatta/lekin, just missed in that earlier
