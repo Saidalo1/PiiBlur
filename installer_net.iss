@@ -8,9 +8,17 @@
 ; deferred to install time instead of being baked into the installer file.
 ;
 ; It needs an internet connection DURING SETUP (not just first launch) — a
-; wizard page says so up front. The download is resumable (curl -C -) and
-; retries indefinitely on failure rather than giving up, so a flaky connection
-; eventually finishes instead of failing the install outright.
+; wizard page says so up front. Uses Inno Setup's own built-in
+; DownloadTemporaryFile (6.1+) -- ONE continuous HTTPS connection for the
+; whole payload, with a progress callback that fires continuously as bytes
+; arrive (same as a browser's own download bar), not the old hand-rolled
+; curl.exe-in-15s-bursts design this replaced: that one had to re-open a
+; fresh HTTPS connection (full TLS handshake + GitHub's redirect) every
+; single burst, AND only updated the on-screen number once per burst, so it
+; looked frozen between updates even on a perfectly fine connection. If a
+; download fails partway, the whole call is retried (DownloadTemporaryFile
+; has no public resume-across-retries API, unlike curl's -C -), up to
+; several times before asking the user whether to keep trying.
 ;
 ; A separate installer.iss (the "offline"/full installer) stays available for
 ; anyone whose connection can't tolerate a mid-setup download — ship both, let
@@ -26,9 +34,6 @@
 #endif
 #ifndef PayloadSha256
   #define PayloadSha256 ""
-#endif
-#ifndef PayloadSizeBytes
-  #define PayloadSizeBytes 0
 #endif
 
 [Setup]
@@ -70,8 +75,7 @@ Filename: "{app}\PiiBlur.exe"; Description: "Launch PiiBlur"; Flags: nowait post
 
 [Code]
 var
-  DownloadPage: TOutputProgressWizardPage;
-  PayloadZip: String;
+  DownloadPage: TDownloadWizardPage;
   DownloadOK: Boolean;
   LangPage: TWizardPage;
   LangRadios: array[0..2] of TNewRadioButton;
@@ -163,116 +167,59 @@ begin
     + #13#10#13#10
     + 'Nothing is uploaded; this is a one-way download of PiiBlur itself. '
     + 'Once installed, PiiBlur runs 100% offline — no further internet use.';
-  DownloadPage := CreateOutputProgressPage('Downloading PiiBlur',
-    'Please wait while PiiBlur''s components are downloaded.');
+  DownloadPage := CreateDownloadPage('Downloading PiiBlur',
+    'Please wait while PiiBlur''s components are downloaded.', nil);
   CreateLanguageChoicePage(InfoPage.ID);
 end;
 
-// ---- Step 2: resumable, never-give-up download via curl.exe ---------------
-// curl.exe ships with Windows 10 (1803+) / Windows 11 by default — no extra
-// install needed. -C - resumes a partial download instead of restarting; the
-// outer loop re-invokes curl (still with -C -) if IT gives up, so a flaky
-// connection is retried indefinitely rather than failing the whole install.
-function FormatMB(const Bytes: Int64): String;
-begin
-  Result := IntToStr(Bytes div (1024 * 1024));
-end;
-
-function CurrentFileSize(const FileName: String): Int64;
+// ---- Step 2: one continuous download via Inno Setup's own DownloadTemporaryFile,
+// not curl -- a single HTTPS connection for the whole payload, with the page's
+// built-in progress bar updating live as bytes stream in (like a browser's own
+// download bar), instead of the old curl-in-15s-bursts design that both
+// re-opened the connection every burst AND only showed a new number once per
+// burst. RequiredSHA256OfFile verifies the download itself (raises if it
+// doesn't match), so no separate manual hash-check step is needed afterward.
+function DoDownload(): Boolean;
 var
-  FindRec: TFindRec;
-begin
-  Result := 0;
-  if FindFirst(FileName, FindRec) then
-  begin
-    Result := FindRec.SizeHigh * $100000000 + FindRec.SizeLow;
-    FindClose(FindRec);
-  end;
-end;
-
-function RunCurl(const Url, DestFile: String): Boolean;
-var
-  ResultCode: Integer;
-  Params: String;
-  TotalBytes, GotBytes, LastBytes, StallCount: Int64;
+  Attempt: Integer;
 begin
   Result := False;
-  TotalBytes := {#PayloadSizeBytes};
-  // Download in short (15s) bursts rather than one long blocking call, so we
-  // can check the partial file's size BETWEEN bursts and show real progress —
-  // -C - (resume) means each burst picks up exactly where the last left off,
-  // so nothing already downloaded is wasted.
-  Params := '-s -L -C - --max-time 15 --retry 2 --retry-delay 3 '
-    + '-o "' + DestFile + '" "' + Url + '"';
-  LastBytes := -1;
-  StallCount := 0;
-  // Each burst below only reports progress AFTER curl returns (up to 15s
-  // later) -- without this, the page sits completely blank (no text, no bar)
-  // for that whole first window while the connection to GitHub is still
-  // being established. Show something immediately instead of waiting for
-  // the first burst to finish.
-  GotBytes := CurrentFileSize(DestFile);
-  if TotalBytes > 0 then
-    DownloadPage.SetProgress(GotBytes, TotalBytes);
-  DownloadPage.SetText('Connecting…', 'Starting the download — this can take a few seconds.');
-  while True do
-  begin
-    // SW_HIDE: no visible console window — a flashing terminal during setup
-    // looks alarming (like a virus) to a non-technical user.
-    Exec(ExpandConstant('{sys}\curl.exe'), Params, '', SW_HIDE,
-         ewWaitUntilTerminated, ResultCode);
-    GotBytes := CurrentFileSize(DestFile);
-    if TotalBytes > 0 then
+  Attempt := 0;
+  DownloadPage.Clear;
+  DownloadPage.Add('{#PayloadUrl}', 'PiiBlur_payload.zip', '{#PayloadSha256}');
+  DownloadPage.Show;
+  try
+    while True do
     begin
-      DownloadPage.SetProgress(GotBytes, TotalBytes);
-      DownloadPage.SetText('Downloading PiiBlur…',
-        FormatMB(GotBytes) + ' MB of ' + FormatMB(TotalBytes) + ' MB');
-    end
-    else
-      DownloadPage.SetText('Downloading PiiBlur…', FormatMB(GotBytes) + ' MB so far');
-    if (TotalBytes > 0) and (GotBytes >= TotalBytes) then
-    begin
-      Result := True;
-      Exit;
+      Attempt := Attempt + 1;
+      try
+        DownloadPage.Download;
+        Result := True;
+        Exit;
+      except
+        if DownloadPage.AbortedByUser then
+          Exit;  // Result stays False -- user cancelled, don't re-prompt
+        // DownloadTemporaryFile has no public resume-across-retries API (unlike
+        // curl's -C -), so a retry here restarts the whole payload -- still
+        // far better than failing the install outright on one network blip.
+        if Attempt >= 3 then
+        if MsgBox('The download failed (' + GetExceptionMessage + ').' +
+                  Chr(13) + Chr(10) + Chr(13) + Chr(10) + 'Try again?',
+                  mbError, MB_YESNO) = IDNO then
+          Exit;  // Result stays False
+      end;
     end;
-    if GotBytes = LastBytes then
-      StallCount := StallCount + 1
-    else
-      StallCount := 0;
-    LastBytes := GotBytes;
-    // No progress across several bursts in a row (not just one slow chunk) —
-    // likely offline/blocked, not just slow. Ask before continuing to retry
-    // forever silently.
-    if StallCount >= 4 then
-    if MsgBox('The download does not seem to be progressing. PiiBlur will ' +
-              'keep trying — it resumes from where it stopped, nothing is ' +
-              'lost.' + Chr(13) + Chr(10) + Chr(13) + Chr(10) + 'Keep trying?',
-                    mbConfirmation, MB_YESNO) = IDNO then
-      Exit;  // Result stays False — user chose to stop
-    // else: loop again, curl -C - picks up from the partial file
+  finally
+    DownloadPage.Hide;
   end;
 end;
 
-// ---- Step 3: verify + extract ----------------------------------------------
-function VerifyAndExtract(const ZipFile, DestDir: String): Boolean;
+// ---- Step 3: extract --------------------------------------------------------
+function ExtractPayload(const ZipFile, DestDir: String): Boolean;
 var
-  ActualHash: String;
   ResultCode: Integer;
 begin
   Result := False;
-#if PayloadSha256 != ""
-  DownloadPage.SetText('Verifying download…', '');
-  ActualHash := GetSHA256OfFile(ZipFile);
-  if CompareText(ActualHash, '{#PayloadSha256}') <> 0 then
-  begin
-    MsgBox('The downloaded file does not match the expected checksum ' +
-           '(it may be corrupted or tampered with). Setup cannot continue.' +
-           Chr(13) + Chr(10) + Chr(13) + Chr(10) + 'Expected: {#PayloadSha256}' +
-           Chr(13) + Chr(10) + 'Got: ' + ActualHash, mbError, MB_OK);
-    Exit;
-  end;
-#endif
-  DownloadPage.SetText('Extracting PiiBlur…', 'Almost done.');
   ForceDirectories(DestDir);
   // tar.exe (bundled since Windows 10 1803) can extract .zip directly — no
   // extra unzip dependency needed.
@@ -294,15 +241,10 @@ begin
   Result := True;
   if CurPageID = wpReady then
   begin
-    DownloadPage.Show;
-    try
-      PayloadZip := ExpandConstant('{tmp}\PiiBlur_payload.zip');
-      DownloadOK := RunCurl('{#PayloadUrl}', PayloadZip);
-      if DownloadOK then
-        DownloadOK := VerifyAndExtract(PayloadZip, ExpandConstant('{app}'));
-    finally
-      DownloadPage.Hide;
-    end;
+    DownloadOK := DoDownload();
+    if DownloadOK then
+      DownloadOK := ExtractPayload(ExpandConstant('{tmp}\PiiBlur_payload.zip'),
+                                    ExpandConstant('{app}'));
     if not DownloadOK then
       Result := False;  // stay on the Ready page so the user can retry/cancel
   end;
