@@ -198,6 +198,13 @@ UI_STOPWORDS = {
     "garchi", "masalan", "bundan", "shunday", "natijada", "xullas", "umuman",
     "darhaqiqat", "xolbuki", "shuningdek", "afsuski", "ehtimol", "nazarimda",
     "menimcha", "aslida", "ayniqsa", "binobarin", "demakki",
+    # "nafaqat...balki (ham)" = "not only...but also" -- same discourse-
+    # connector family as the batch above, just missed it the first time;
+    # "nafaqa" is how OCR read it with the trailing "t" dropped.
+    "nafaqat", "nafaqa",
+    # English UI chrome from testing against a non-Uzbek website (generated.photos) --
+    # the model mistagged a plain English word in a large-font heading as a name.
+    "learning",
     # Formal-essay structural vocabulary: section labels ("kirish"=introduction,
     # "xulosa"=conclusion, "reja"=plan, "asosiy"=main) that the neural model
     # itself (not just the gazetteer) kept mistagging -- most often right after

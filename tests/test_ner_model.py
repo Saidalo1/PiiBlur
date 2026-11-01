@@ -102,6 +102,16 @@ def test_roman_numeral_section_marker_prefix_not_flagged_as_name():
         assert reds == [], word
 
 
+def test_nafaqat_connector_not_flagged_as_name():
+    # "nafaqat...balki (ham)" = "not only...but also" -- same discourse-
+    # connector family as aynan/albatta/lekin, just missed in that earlier
+    # batch; "Nafaqa" is the OCR-garbled form (trailing "t" dropped) from a
+    # real long-form Uzbek news article.
+    for word in ("Nafaqat", "Nafaqa"):
+        reds = detect_names_model(_row([word]), stopwords=patterns.UI_STOPWORDS)
+        assert reds == [], word
+
+
 def test_ocr_garbled_ai_acronym_not_flagged_as_name():
     # Real false positive: OCR misread the capital "I" in "AI'ga" (dative case
     # of the "AI" acronym, common in tech-content screenshots) as lowercase
