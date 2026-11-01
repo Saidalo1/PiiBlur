@@ -91,6 +91,17 @@ def test_education_form_words_not_flagged_as_names():
         assert reds == [], word
 
 
+def test_roman_numeral_section_marker_prefix_not_flagged_as_name():
+    # Real false positive: formal Uzbek essay outlines number sections
+    # "I.Kirish:", "III.Xulosa." etc. with NO space after the period, so OCR
+    # reads it as ONE token -- a plain stopword check against "kirish"/
+    # "xulosa" alone never matched the actual token "I.Kirish". Also covers
+    # the OCR confusable "III." -> "Ill." (capital I misread as lowercase l).
+    for word in ("I.Kirish", "III.Xulosa", "Ill.Xulosa", "I.Quyosh"):
+        reds = detect_names_model(_row([word]), stopwords=patterns.UI_STOPWORDS)
+        assert reds == [], word
+
+
 def test_ocr_garbled_ai_acronym_not_flagged_as_name():
     # Real false positive: OCR misread the capital "I" in "AI'ga" (dative case
     # of the "AI" acronym, common in tech-content screenshots) as lowercase

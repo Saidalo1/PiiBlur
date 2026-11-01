@@ -230,6 +230,49 @@ def test_bare_gazetteer_word_gets_a_confidence_boost_from_ner_corroboration():
     assert with_conf > without_conf  # but corroboration scores meaningfully higher
 
 
+def test_patriotic_essay_vocabulary_not_flagged_bare():
+    # Real false positive from a "Vatan" (homeland) themed school essay:
+    # "Bulbul" (nightingale) anchored a cluster and dragged in the unrelated
+    # adjacent word "Vatan" (homeland) -- neither is a person name, both are
+    # common words used in their literal/poetic sense.
+    for word in ("Bulbul", "Quyosh"):
+        reds = detect(_row([word]), min_confidence=0.60)
+        assert not any(r.category == "name" for r in reds), word
+
+
+def test_dedupe_keeps_clean_reading_over_a_differently_garbled_duplicate():
+    # Real bug: a dual-language OCR pass read the SAME box as both "komil"
+    # (correct) and "Котн" (pure Cyrillic garbage) -- not a confusable
+    # look-alike pair (different letters entirely), so the old dedup (which
+    # only merged text-confusable duplicates) kept BOTH, and the neural model
+    # flagged the garbled "Котн" as a name on its own. Any two readings at
+    # the same spot are duplicates of ONE physical word, not two, regardless
+    # of whether their text happens to look alike.
+    box = (100, 779, 31, 10)
+    words = [Word("komil", box), Word("Котн", box)]
+    out = preprocess_words(words)
+    assert len(out) == 1
+    assert out[0].text == "komil"
+
+
+def test_sentence_line_does_not_absorb_into_next_lines_real_name():
+    # Real bug from a formal essay: the line above a real name was a full,
+    # unrelated SENTENCE ("Zarracha bo'lsa ham, ... xursandmiz!"), whose
+    # first word is capitalized only because it starts a sentence. The old
+    # cross-line merge let it bleed into the next line's real name redaction
+    # box just because that sentence line had no anchor of its own -- a
+    # genuinely wrapped given name awaiting its surname is a line with little
+    # else on it, never a multi-word sentence.
+    words = (_row(["Zarracha", "bo'lsa", "ham,", "yordamimiz", "tekkanidan",
+                   "xursandmiz!"], y=858)
+            + _row(["Husniddin", "Ortiqov."], y=874))
+    reds = detect(words, min_confidence=0.60)
+    name_reds = [r for r in reds if r.category == "name"]
+    assert len(name_reds) == 1
+    assert "Zarracha" not in name_reds[0].text
+    assert "Husniddin" in name_reds[0].text
+
+
 def test_formal_essay_words_not_flagged_bare():
     # Real false positive from a formal Uzbek school-essay screenshot: "Olim"
     # (scientist/scholar) being gazetteer-listed and bare let the clustering

@@ -356,7 +356,20 @@ def detect_names(words: list[Word], gazetteer: set | None = None,
             # pairwise check classified it -- gets the same anchor guard.
             if line_id.get(i) != line_id.get(j):
                 upper = i if words[i].box[1] < words[j].box[1] else j
-                if line_has_anchor.get(line_id.get(upper)):
+                # Real bug from a formal-essay screenshot: the upper line was a
+                # full, unrelated SENTENCE ("Zarracha bo'lsa ham, ... xursandmiz!")
+                # whose first word ("Zarracha") is capitalized only because it
+                # starts a sentence, not because it's a name fragment -- it has
+                # no anchor of its OWN, so the plain "incomplete line" check
+                # above let it get absorbed into the NEXT line's real name
+                # ("Husniddin Ortiqov"), over-reaching the redaction box into
+                # unrelated text. A genuinely wrapped given name awaiting its
+                # surname is a line with little else on it ("Akram" alone,
+                # usable_count<=2) -- a multi-word sentence is never that, so
+                # cap how much the upper line can carry before it no longer
+                # counts as "just a bare name fragment".
+                if (line_has_anchor.get(line_id.get(upper))
+                        or line_size.get(upper, 99) > 2):
                     continue
             parent[_find(i)] = _find(j)
 
@@ -526,13 +539,30 @@ def _dedupe_words(words: list[Word]) -> list[Word]:
     out: list[Word] = []
     for w in words:
         t = _confusable_fold(w.text.strip().lower())
-        dup_idx = next((i for i, k in enumerate(out)
-                        if t == _confusable_fold(k.text.strip().lower())
-                        and _box_overlap_frac(w.box, k.box) > 0.5), None)
-        if dup_idx is None:
+        overlap_idx = next((i for i, k in enumerate(out)
+                            if _box_overlap_frac(w.box, k.box) > 0.5), None)
+        if overlap_idx is None:
             out.append(w)
-        elif _looks_garbled(out[dup_idx].text) and not _looks_garbled(w.text):
-            out[dup_idx] = w
+            continue
+        same_text = t == _confusable_fold(out[overlap_idx].text.strip().lower())
+        if same_text:
+            if _looks_garbled(out[overlap_idx].text) and not _looks_garbled(w.text):
+                out[overlap_idx] = w
+            continue
+        # Same spot, but the text ISN'T even a confusable look-alike of the
+        # first reading -- not a character-substitution pair, just a SECOND
+        # OCR language pass misreading the same glyphs entirely differently
+        # (real bug: "komil" read correctly by the Latin/English pass, the
+        # SAME box also read by the Cyrillic pass as pure garbage "Котн",
+        # which the neural model then mistagged as a name on its own). Two
+        # boxes can't both be the real text for the same physical glyphs, so
+        # still treat this as one duplicate, not two separate words -- keep
+        # the non-garbled reading (first-seen order is already Latin-first,
+        # see Settings.ocr_langs, so this naturally favors the correct one).
+        if _looks_garbled(out[overlap_idx].text) and not _looks_garbled(w.text):
+            out[overlap_idx] = w
+        # else: keep whichever was already kept (first-seen wins when neither
+        # text looks garbled by that heuristic).
     return out
 
 

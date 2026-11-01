@@ -198,6 +198,21 @@ UI_STOPWORDS = {
     "garchi", "masalan", "bundan", "shunday", "natijada", "xullas", "umuman",
     "darhaqiqat", "xolbuki", "shuningdek", "afsuski", "ehtimol", "nazarimda",
     "menimcha", "aslida", "ayniqsa", "binobarin", "demakki",
+    # Formal-essay structural vocabulary: section labels ("kirish"=introduction,
+    # "xulosa"=conclusion, "reja"=plan, "asosiy"=main) that the neural model
+    # itself (not just the gazetteer) kept mistagging -- most often right after
+    # a roman-numeral section marker ("I.Kirish.", "III.Xulosa.") -- plus
+    # "vatan"=homeland, "bulbul"=nightingale, "quyosh"=sun, each a common word
+    # used in its literal sense in patriotic/nature prose that also happens to
+    # be a rare given name (same AMBIGUOUS_GIVEN_NAMES entries, but that list
+    # only gates the gazetteer pass -- the model's OWN misfires on these need
+    # this separate list). "yagonadir" ("is unique/one-of-a-kind") was an
+    # ALL-CAPS document title the model mistagged on the same essay.
+    "kirish", "xulosa", "reja", "asosiy", "vatan", "bulbul", "quyosh", "yagonadir",
+    # "Ko'hinur" -- the Koh-i-Noor diamond, used metaphorically in the same
+    # patriotic essay ("qimmatbaho Ko'hinur olmosi kabi" = "precious like the
+    # Koh-i-Noor diamond"). A real proper noun, but never a PERSON's name.
+    "ko'hinur",
     # Same English weekday-abbreviation timestamp as NAME_STOPWORDS above -- the
     # neural model itself mistagged a bare "Thu" sitting alone on a chat row as
     # a person name (0.66 confidence), a direct false positive on its own, not
@@ -298,7 +313,7 @@ AMBIGUOUS_GIVEN_NAMES = {
     # exactly this kind of virtue/concept vocabulary) -- same bug shape as
     # mamlakat/viloyat/davlat above, just a formal-writing register the
     # gazetteer audit hadn't been tested against yet.
-    "olim", "reja", "xulosa", "madaniyat",
+    "olim", "reja", "xulosa", "madaniyat", "bulbul", "quyosh",
     # Found by systematically cross-referencing our full ~11.6k name list against
     # a real Uzbek dictionary (uz-hunspell, github.com/uzbek-net/uz-hunspell) —
     # 2115 overlaps total, but MOST are genuine rare names that a spellcheck

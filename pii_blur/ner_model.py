@@ -100,6 +100,17 @@ def _person_char_mask(text: str, min_score: float) -> set[int]:
     return flagged
 
 
+# Formal Uzbek essay/document outlines number sections "I.Kirish:",
+# "III.Xulosa." etc. with NO space after the period -- OCR then reads it as one
+# token, so a plain stopword match against "kirish"/"xulosa" alone never fires
+# (the actual token is "I.Kirish", not "Kirish"). Strip a leading roman-numeral
+# marker before the stopword check so the real word underneath is compared.
+# Includes lowercase "l" alongside "I" -- OCR commonly misreads "III." as
+# "Ill." (capital I confused with lowercase L, same confusable pair as the
+# earlier "AI'ga" -> "Al'ga" bug).
+_ROMAN_PREFIX = re.compile(r"^[IVXLivxl]{1,4}\.(?=[^\s.])")
+
+
 def detect_names_model(words: list[Word], min_score: float = 0.75,
                        stopwords: set | None = None) -> list[Redaction]:
     """Neural name pass. Returns a Redaction per OCR word the model flags as part
@@ -129,7 +140,7 @@ def detect_names_model(words: list[Word], min_score: float = 0.75,
             for start, end, w in spans:
                 if not any(c in flagged for c in range(start, end)):
                     continue
-                token = re.sub(r"[^\w']", "", w.text)
+                token = re.sub(r"[^\w']", "", _ROMAN_PREFIX.sub("", w.text))
                 if len(token) < 3:   # real Uzbek/Russian given names are never this
                                      # short; drops 2-letter OCR noise ("Zi", "Si")
                     continue
