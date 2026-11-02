@@ -234,12 +234,35 @@ begin
   end;
 end;
 
+// A previous install's PiiBlur.exe can still be running in the tray when the
+// user re-runs setup. CloseApplications=yes in [Setup] does NOT catch this --
+// that mechanism only checks files listed in a [Files] section, and this
+// installer has none (the app is extracted via tar.exe in code, not Inno's
+// own file-copy engine), so Inno never even knows PiiBlur.exe will be
+// touched and never offers to close it. The running process then holds its
+// own .exe open, so tar.exe fails to overwrite it -- consistently, not a
+// one-off lock, which is why retrying the extraction alone never helped.
+// Confirmed on a real affected machine: Get-Process showed PiiBlur.exe
+// running from an earlier install/test, and the error stopped as soon as it
+// was closed. taskkill here is a best-effort close (exit code ignored --
+// "not running" is not a failure); the short Sleep lets Windows actually
+// release the file handle after the process exits before tar touches it.
+procedure CloseRunningApp();
+var
+  ResultCode: Integer;
+begin
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM PiiBlur.exe /T', '',
+       SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Sleep(500);
+end;
+
 // ---- Step 3: extract --------------------------------------------------------
 function ExtractPayload(const ZipFile, DestDir: String): Boolean;
 var
   ResultCode, Attempt: Integer;
 begin
   Result := False;
+  CloseRunningApp();
   ForceDirectories(DestDir);
   // tar.exe (bundled since Windows 10 1803) can extract .zip directly — no
   // extra unzip dependency needed.
