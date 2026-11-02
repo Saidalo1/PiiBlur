@@ -41,6 +41,14 @@ never blurs ordinary numbers by mistake):
 Structured identifiers are rock-solid; **names are a fuzzy, optional pass** (toggle
 in settings). More countries are easy to add — PRs welcome.
 
+> **Known limitation:** handwritten/cursive text (e.g. a photographed filled-in
+> paper form) isn't recognized as reliably as printed/typed text — general OCR
+> engines are trained on print, not handwriting, which is a genuinely different
+> recognition problem. A future direction is fine-tuning a handwriting model
+> (TrOCR-style) using a related Turkic-language dataset as a transfer-learning
+> starting point, once real labeled Uzbek handwriting samples exist to validate
+> against. Not started yet — tracked here, not promised.
+
 ## Install
 
 1. Download **`PiiBlur_Setup.exe`** from [Releases](../../releases).
