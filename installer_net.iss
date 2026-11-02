@@ -237,22 +237,38 @@ end;
 // ---- Step 3: extract --------------------------------------------------------
 function ExtractPayload(const ZipFile, DestDir: String): Boolean;
 var
-  ResultCode: Integer;
+  ResultCode, Attempt: Integer;
 begin
   Result := False;
   ForceDirectories(DestDir);
   // tar.exe (bundled since Windows 10 1803) can extract .zip directly — no
   // extra unzip dependency needed.
-  if not (Exec(ExpandConstant('{sys}\tar.exe'),
-               '-xf "' + ZipFile + '" -C "' + DestDir + '"',
-               '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and
-          (ResultCode = 0)) then
+  //
+  // Real bug from a user's machine: the download itself completed and its
+  // SHA-256 verified fine, but the VERY NEXT tar.exe call on that same file
+  // still failed with error 1 -- yet manually re-downloading the identical
+  // file (same bytes, verified by hand with tar separately) and extracting
+  // it worked without any changes. Classic signature of something else
+  // (most likely real-time antivirus) transiently locking a just-downloaded
+  // archive containing executables for a moment right after it lands on
+  // disk -- not a corrupt download, not a tar/path/disk-space problem (all
+  // individually ruled out on the affected machine). A short retry loop is
+  // the standard way installers ride out exactly this kind of transient
+  // lock, the same resilience shape DoDownload already uses for the network
+  // call.
+  for Attempt := 1 to 3 do
   begin
-    MsgBox('Could not extract the downloaded files (error ' +
-           IntToStr(ResultCode) + ').', mbError, MB_OK);
-    Exit;
+    if Exec(ExpandConstant('{sys}\tar.exe'), '-xf "' + ZipFile + '" -C "' + DestDir + '"',
+            '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0) then
+    begin
+      Result := True;
+      Exit;
+    end;
+    if Attempt < 3 then
+      Sleep(1500);
   end;
-  Result := True;
+  MsgBox('Could not extract the downloaded files (error ' +
+         IntToStr(ResultCode) + ').', mbError, MB_OK);
 end;
 
 // ---- Wire it into the install sequence -------------------------------------
