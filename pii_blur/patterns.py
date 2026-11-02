@@ -38,6 +38,25 @@ US_SSN = re.compile(r"\b\d{3}-\d{2}-\d{4}\b")
 INTL_PHONE = re.compile(r"(?<!\w)\+\d{1,3}[\s\-]?(?:\(?\d{1,4}\)?[\s\-]?){2,5}\d{2,4}(?!\d)")
 
 
+# ORCID: a persistent, person-linked researcher ID (ORCID iD), common in
+# academic papers right next to the author's name/email -- 4 groups of 4
+# digits, last group's final char can be 'X' (an ISO 7064 MOD 11-2 check
+# character, not a digit). Tolerates O/o for 0 -- a real OCR confusable found
+# on an actual paper ("oooo-0002-5660-0860" for "0000-..."), same spirit as
+# the card/PINFL digit-consistency checks below.
+#
+# Requires the literal word "ORCID" right before the number (real documents
+# always label it, e.g. "ORCID iD:0000-0002-5660-0860" or "orcid.org/...") --
+# found the hard way: the bare 4x4-digit-group shape alone is NOT distinctive
+# enough; its MOD-11-2 check character is only 1-in-11 selective, so roughly
+# 1 in 11 ordinary 16-digit card numbers randomly also "pass" it, and without
+# this context requirement real cards were being misread as ORCIDs.
+ORCID = re.compile(
+    r"ORCID\s*(?:i?D)?\s*:?\s*[0-9Oo]{4}-[0-9Oo]{4}-[0-9Oo]{4}-[0-9Oo]{3}[0-9OoXx]",
+    re.IGNORECASE,
+)
+
+
 # ── Uzbekistan ──────────────────────────────────────────────────────────────
 UZ_PHONE = re.compile(
     r"(?<!\d)(?:\+?998[\s\-]?)?"
@@ -95,6 +114,32 @@ def ipv4_ok(s: str) -> bool:
     return len(parts) == 4 and all(p.isdigit() and 0 <= int(p) <= 255 for p in parts)
 
 
+_ORCID_NUM = re.compile(r"[0-9Oo]{4}-[0-9Oo]{4}-[0-9Oo]{4}-[0-9Oo]{3}[0-9OoXx]")
+
+
+def orcid_checksum_ok(s: str) -> bool:
+    """ISO 7064 MOD 11-2, the real ORCID check-character algorithm (verified
+    against a real ORCID: "0000-0002-5660-0860" -> check digit 0). `s` is the
+    WHOLE match including the "ORCID ..." label text, so the number itself is
+    extracted first -- otherwise stray letters in "ORCID"/"iD" would corrupt
+    the digit count."""
+    m = _ORCID_NUM.search(s)
+    if not m:
+        return False
+    num = m.group()
+    digits = ["0" if c in "Oo" else c for c in num if c.isdigit() or c in "OoXx"]
+    body, check = digits[:-1], digits[-1]
+    if len(body) != 15:
+        return False
+    total = 0
+    for c in body:
+        total = (total + int(c)) * 2
+    remainder = total % 11
+    result = (12 - remainder) % 11
+    expected = "X" if result == 10 else str(result)
+    return check.upper() == expected
+
+
 def pinfl_structural_ok(s: str) -> bool:
     if not _separators_consistent(s):
         return False
@@ -109,6 +154,7 @@ def pinfl_structural_ok(s: str) -> bool:
 # first so a shorter pattern can't eat part of a longer value.
 STRUCTURED = [
     ("email", EMAIL, 0.99, None),
+    ("orcid", ORCID, 0.97, orcid_checksum_ok),
     ("iban", IBAN, 0.90, None),
     # PINFL (exactly 14 digits + structural check) before CARD: in UZ/RU a 14-digit
     # PINFL is far likelier than a 14-digit Diners card, and its validator keeps it

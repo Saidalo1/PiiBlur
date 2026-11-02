@@ -56,6 +56,23 @@ def test_card_luhn_pass_and_fail():
     assert not any(r.category == "card" for r in bad)
 
 
+def test_orcid_requires_label_and_valid_checksum():
+    # Real miss from an academic paper: ORCID iD (a persistent researcher
+    # identifier) was never detected at all -- no pattern for it existed.
+    # Must require the "ORCID" label (its bare 4x4-digit-group shape alone
+    # collides with card numbers -- about 1 in 11 random ones pass the same
+    # MOD-11-2 checksum by coincidence) and a correct check character.
+    ok = detect(_row(["ORCID", "ID:0000-0002-5660-0860"]))
+    assert any(r.category == "orcid" for r in ok)
+    # Same shape, no "ORCID" label nearby -- must NOT be caught as one (a
+    # real card number formatted the same way, e.g.).
+    bare = detect(_row(["4056-7151-6327-4861"]))
+    assert not any(r.category == "orcid" for r in bare)
+    # OCR commonly misreads "0000" as "oooo" (letter O) -- still valid.
+    garbled = detect(_row(["ORCID", "ID:oooo-0002-5660-0860"]))
+    assert any(r.category == "orcid" for r in garbled)
+
+
 def test_pinfl_structural():
     ok = detect(_row(["PINFL", "31505901234560"]))   # 3 | 15.05.90 | ... -> valid
     assert any(r.category == "pinfl" for r in ok)
