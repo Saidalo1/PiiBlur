@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 REPO = "Saidalo1/PiiBlur"
 _API_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
-_ASSET_NAME = "PiiBlur_Setup_Net.exe"
+_ASSET_NAME = "PiiBlur_Setup.exe"  # the thin/net installer -- now the default-named asset
 _TIMEOUT = 6  # seconds -- never let a flaky connection delay startup noticeably
 
 
@@ -100,7 +100,7 @@ def download_and_launch_installer(download_url: str, sha256: str | None,
         return False
 
     try:
-        dest = os.path.join(tempfile.gettempdir(), "PiiBlur_Setup_Net.exe")
+        dest = os.path.join(tempfile.gettempdir(), "PiiBlur_Setup.exe")
         req = urllib.request.Request(download_url)
         with urllib.request.urlopen(req, timeout=30) as resp:
             total = int(resp.headers.get("Content-Length", 0))

@@ -107,7 +107,7 @@ python -m venv .venv && .venv\Scripts\activate
 pip install -r requirements.txt
 python -m pii_blur.tray         # run from source
 pytest -q                       # 14,000+ generated tests
-python build.py                 # -> installer_output\PiiBlur_Setup.exe
+python build.py                 # -> installer_output\PiiBlur_Setup_Offline.exe
 ```
 
 > The name model's weights (`assets/ner/ner_model_int8.onnx`, ~135 MB) aren't

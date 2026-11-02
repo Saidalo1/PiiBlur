@@ -33,11 +33,11 @@ jobs:
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PiiBlur_Setup
-          path: installer_output/PiiBlur_Setup.exe
+          name: PiiBlur_Setup_Offline
+          path: installer_output/PiiBlur_Setup_Offline.exe
 
       - name: Attach to Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: installer_output/PiiBlur_Setup.exe
+          files: installer_output/PiiBlur_Setup_Offline.exe

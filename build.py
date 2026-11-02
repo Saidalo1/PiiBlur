@@ -71,7 +71,7 @@ def main():
     fix_pe_checksum(exe)
 
     run([find_iscc(), f"/DAppVer={VERSION}", "installer.iss"])
-    installer = os.path.join(ROOT, "installer_output", "PiiBlur_Setup.exe")
+    installer = os.path.join(ROOT, "installer_output", "PiiBlur_Setup_Offline.exe")
     if not os.path.exists(installer):
         sys.exit("ISCC finished but the installer is missing.")
 
