@@ -74,6 +74,31 @@ Name: "{autodesktop}\PiiBlur"; Filename: "{app}\PiiBlur.exe"; Tasks: desktopicon
 Filename: "{app}\PiiBlur.exe"; Description: "Launch PiiBlur"; Flags: nowait postinstall skipifsilent
 
 [Code]
+// Windows' bundled tar.exe (libarchive/bsdtar) has a known bug mangling
+// non-ASCII characters in COMMAND-LINE paths (not inside the archive itself):
+// https://github.com/libarchive/libarchive/issues/2092 -- a real risk here
+// since many of our users have Cyrillic Windows usernames, which sit right
+// inside the install/temp paths we pass to tar.exe (C:\Users\<name>\...).
+// The standard workaround is to pass the legacy 8.3 short ASCII path instead
+// of the long Unicode one; GetShortPathNameW returns that name for free
+// (falls back to the original path if short names are disabled or the path
+// doesn't exist yet, so this never makes things worse than before).
+function GetShortPathName(LongPath: string; ShortPath: string; BufSize: Longint): Longint;
+  external 'GetShortPathNameW@kernel32.dll stdcall';
+
+function ToShortPath(const LongPath: string): string;
+var
+  Buf: string;
+  Len: Longint;
+begin
+  SetLength(Buf, 1024);
+  Len := GetShortPathName(LongPath, Buf, 1024);
+  if Len > 0 then
+    Result := Copy(Buf, 1, Len)
+  else
+    Result := LongPath;
+end;
+
 var
   DownloadPage: TOutputProgressWizardPage;
   DownloadOK: Boolean;
@@ -260,10 +285,15 @@ end;
 function ExtractPayload(const ZipFile, DestDir: String): Boolean;
 var
   ResultCode, Attempt: Integer;
+  ShortZip, ShortDest: string;
 begin
   Result := False;
   CloseRunningApp();
   ForceDirectories(DestDir);
+  // Must come AFTER ForceDirectories -- GetShortPathName only works on a path
+  // that already exists.
+  ShortZip := ToShortPath(ZipFile);
+  ShortDest := ToShortPath(DestDir);
   // tar.exe (bundled since Windows 10 1803) can extract .zip directly — no
   // extra unzip dependency needed.
   //
@@ -281,7 +311,7 @@ begin
   // call.
   for Attempt := 1 to 3 do
   begin
-    if Exec(ExpandConstant('{sys}\tar.exe'), '-xf "' + ZipFile + '" -C "' + DestDir + '"',
+    if Exec(ExpandConstant('{sys}\tar.exe'), '-xf "' + ShortZip + '" -C "' + ShortDest + '"',
             '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0) then
     begin
       Result := True;
@@ -291,7 +321,11 @@ begin
       Sleep(1500);
   end;
   MsgBox('Could not extract the downloaded files (error ' +
-         IntToStr(ResultCode) + ').', mbError, MB_OK);
+         IntToStr(ResultCode) + ').' + #13#10#13#10 +
+         'If this keeps happening, check Windows Security -> Virus & threat ' +
+         'protection -> "Controlled folder access" -- if it''s on, it can ' +
+         'silently block PiiBlur from writing its own files here.',
+         mbError, MB_OK);
 end;
 
 // ---- Wire it into the install sequence -------------------------------------

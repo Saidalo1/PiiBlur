@@ -49,3 +49,8 @@ ttkbootstrap>=1.10
 
 # Tests
 pytest>=8.0
+
+# Build tooling (not needed at runtime, only by build.py): fixes the PE
+# checksum PyInstaller's bootloader leaves at 0, which several antivirus
+# engines treat as a suspicious-file signal on its own -- see build.py.
+pefile>=2023.2.7

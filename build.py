@@ -32,6 +32,24 @@ def find_iscc():
     sys.exit("ISCC.exe (Inno Setup 6) not found — install it or edit ISCC_CANDIDATES.")
 
 
+def fix_pe_checksum(exe_path):
+    """PyInstaller's bootloader leaves the PE checksum field at 0 instead of a
+    real value. A correct checksum costs nothing and is required for kernel
+    drivers, but PyInstaller doesn't bother computing one for a plain EXE --
+    a 0 checksum is itself one of the cheap signals some antivirus heuristics
+    use to flag a file as suspicious (reported to measurably cut false-positive
+    detections, e.g. https://github.com/pyinstaller/pyinstaller/issues/5579).
+    Recomputing it is free: pefile reads the file, computes the real checksum,
+    and writes it back in place."""
+    import pefile
+
+    pe = pefile.PE(exe_path)
+    pe.OPTIONAL_HEADER.CheckSum = pe.generate_checksum()
+    pe.write(exe_path)
+    pe.close()
+    print("PE checksum fixed:", exe_path, flush=True)
+
+
 def run(cmd):
     print("\n>>>", " ".join(cmd), flush=True)
     r = subprocess.run(cmd, cwd=ROOT)
@@ -46,8 +64,11 @@ def main():
 
     run([sys.executable, "-m", "PyInstaller", "PiiBlur.spec", "--noconfirm", "--log-level", "WARN"])
     folder = os.path.join(ROOT, "dist", "PiiBlur")
-    if not os.path.exists(os.path.join(folder, "PiiBlur.exe")):
+    exe = os.path.join(folder, "PiiBlur.exe")
+    if not os.path.exists(exe):
         sys.exit("PyInstaller finished but dist/PiiBlur/PiiBlur.exe is missing.")
+
+    fix_pe_checksum(exe)
 
     run([find_iscc(), f"/DAppVer={VERSION}", "installer.iss"])
     installer = os.path.join(ROOT, "installer_output", "PiiBlur_Setup.exe")
