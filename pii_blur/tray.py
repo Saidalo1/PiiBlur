@@ -182,12 +182,37 @@ def main():
     threading.Thread(target=_check_update, name="update-check", daemon=True).start()
 
     def do_update(_icon, item):
-        from pii_blur import updater
-        ok = updater.download_and_launch_installer(
-            available_update.get("download_url"), available_update.get("sha256"))
-        if ok:
-            control.stop.set()
-            icon.stop()
+        # Real complaint: clicking this gave ZERO visible feedback while a
+        # ~250MB download ran -- no way to tell it was working, stuck, or
+        # already done. Runs on its own thread (menu-click handlers block
+        # pystray's whole event loop otherwise, freezing the tray icon for
+        # the entire download) and updates the tray tooltip (hover text)
+        # with live progress, the one place a few-times-a-second update is
+        # appropriate -- unlike a toast, hovering is something the user
+        # does to CHECK status, not something pushed at them repeatedly.
+        def _run():
+            from pii_blur import updater
+
+            def on_progress(got, total):
+                if total:
+                    icon.title = f"PiiBlur — {i18n.t('tray_updating', settings.language)} {got // (1024*1024)}/{total // (1024*1024)} MB"
+                else:
+                    icon.title = f"PiiBlur — {i18n.t('tray_updating', settings.language)} {got // (1024*1024)} MB"
+
+            icon.title = f"PiiBlur — {i18n.t('tray_updating', settings.language)}"
+            ok = updater.download_and_launch_installer(
+                available_update.get("download_url"), available_update.get("sha256"),
+                on_progress=on_progress)
+            icon.title = "PiiBlur"
+            if ok:
+                control.stop.set()
+                icon.stop()
+            else:
+                try:
+                    icon.notify(i18n.t("toast_update_failed", settings.language), "PiiBlur")
+                except Exception:
+                    pass
+        threading.Thread(target=_run, name="update-install", daemon=True).start()
 
     def skip_update(_icon, item):
         from pii_blur import onboarding

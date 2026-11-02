@@ -33,6 +33,14 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "PiiBlur {tag} is out. Pick it from the tray menu to install.",
         "ru": "Вышла PiiBlur {tag}. Выберите в меню трея, чтобы установить.",
     },
+    "tray_updating": {
+        "uz": "Yangilanmoqda…", "en": "Updating…", "ru": "Обновление…",
+    },
+    "toast_update_failed": {
+        "uz": "Yangilashni yuklab bo'lmadi. Keyinroq qayta urinib ko'ring.",
+        "en": "Couldn't download the update. Try again later.",
+        "ru": "Не удалось скачать обновление. Попробуйте позже.",
+    },
 
     "gui_title": {"uz": "PiiBlur — Sozlamalar", "en": "PiiBlur — Settings",
                  "ru": "PiiBlur — Настройки"},

@@ -204,7 +204,8 @@ def _build(root, settings: Settings, control, q: "queue.Queue", on_pause_change)
     watching `q` for open requests."""
     import ttkbootstrap as tb
 
-    root.title(i18n.t("gui_title", settings.language))
+    from pii_blur import __version__ as _app_version
+    root.title(f"{i18n.t('gui_title', settings.language)} (v{_app_version})")
     root.resizable(False, False)
     root.protocol("WM_DELETE_WINDOW", root.withdraw)  # close (X) just hides it
     # The window must be REALIZED (have a real native HWND with its own frame)
@@ -360,7 +361,7 @@ def _build(root, settings: Settings, control, q: "queue.Queue", on_pause_change)
     footer_lbl.grid(row=5, column=0, columnspan=3, pady=(4, 12))
 
     def retranslate(_event=None):
-        root.title(t("gui_title"))
+        root.title(f"{t('gui_title')} (v{_app_version})")
         names_lbl.configure(text=t("gui_blur_names"))
         faces_lbl.configure(text=t("gui_blur_faces"))
         start_lbl.configure(text=t("gui_autostart"))
